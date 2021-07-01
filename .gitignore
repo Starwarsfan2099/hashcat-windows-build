@@ -1,11 +1,8 @@
-*.exe
 *.bin
 *.app
 hashcat
-hashcat.exe
 libhashcat.so.*
 libhashcat*.dylib
-hashcat.dll
 *.potfile
 *.restore
 *.dictstat2
@@ -16,7 +13,6 @@ hashcat.dll
 *.dSYM
 kernels/**
 lib/*.a
-modules/*.dll
 modules/*.so
 obj/*/*/*.o
 obj/*.o

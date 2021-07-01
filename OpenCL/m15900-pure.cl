@@ -255,7 +255,7 @@ KERNEL_FQ void m15900_init (KERN_ATTR_TMPS_ESALT (dpapimk_tmp_v2_t, dpapimk_t))
 
   sha512_hmac_ctx_t sha512_hmac_ctx;
 
-  sha512_hmac_init_128 (&sha512_hmac_ctx, w0, w1, w2, w3, w5, w5, w6, w7);
+  sha512_hmac_init_128 (&sha512_hmac_ctx, w0, w1, w2, w3, w4, w5, w6, w7);
 
   tmps[gid].ipad64[0] = sha512_hmac_ctx.ipad.h[0];
   tmps[gid].ipad64[1] = sha512_hmac_ctx.ipad.h[1];
@@ -859,7 +859,7 @@ KERNEL_FQ void m15900_comp (KERN_ATTR_TMPS_ESALT (dpapimk_tmp_v2_t, dpapimk_t))
    && (expected_key[2] == h32_from_64_S (ctx.opad.h[1]))
    && (expected_key[3] == l32_from_64_S (ctx.opad.h[1])))
   {
-    if (atomic_inc (&hashes_shown[DIGESTS_OFFSET]) == 0)
+    if (hc_atomic_inc (&hashes_shown[DIGESTS_OFFSET]) == 0)
     {
       mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, DIGESTS_OFFSET + 0, gid, il_pos, 0, 0);
     }
