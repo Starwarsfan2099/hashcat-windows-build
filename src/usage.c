@@ -35,6 +35,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "     --hex-salt                 |      | Assume salt is given in hex                          |",
   "     --hex-wordlist             |      | Assume words in wordlist are given in hex            |",
   "     --force                    |      | Ignore warnings                                      |",
+  "     --deprecated-check-disable |      | Enable deprecated plugins                            |",
   "     --status                   |      | Enable automatic update of the status screen         |",
   "     --status-json              |      | Enable JSON format for status output                 |",
   "     --status-timer             | Num  | Sets seconds between status screen updates to X      | --status-timer=1",
@@ -97,6 +98,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   " -d, --backend-devices          | Str  | Backend devices to use, separated with commas        | -d 1",
   " -D, --opencl-device-types      | Str  | OpenCL device-types to use, separated with commas    | -D 1",
   " -O, --optimized-kernel-enable  |      | Enable optimized kernels (limits password length)    |",
+  " -M, --multiply-accel-disable   |      | Disable multiply kernel-accel with processor count   |",
   " -w, --workload-profile         | Num  | Enable a specific workload profile, see pool below   | -w 3",
   " -n, --kernel-accel             | Num  | Manual workload tuning, set outerloop step size to X | -n 64",
   " -u, --kernel-loops             | Num  | Manual workload tuning, set innerloop step size to X | -u 256",
@@ -115,6 +117,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   " -g, --generate-rules           | Num  | Generate X random rules                              | -g 10000",
   "     --generate-rules-func-min  | Num  | Force min X functions per rule                       |",
   "     --generate-rules-func-max  | Num  | Force max X functions per rule                       |",
+  "     --generate-rules-func-sel  | Str  | Pool of rule operators valid for random rule engine  | --generate-rules-func-sel=ioTlc",
   "     --generate-rules-seed      | Num  | Force RNG seed set to X                              |",
   " -1, --custom-charset1          | CS   | User-defined charset ?1                              | -1 ?l?d?u",
   " -2, --custom-charset2          | CS   | User-defined charset ?2                              | -2 ?l?d?s",
@@ -237,6 +240,10 @@ static const char *const USAGE_BIG_POST_HASHMODES[] =
   "",
   "* https://hashcat.net/wiki/#howtos_videos_papers_articles_etc_in_the_wild",
   "* https://hashcat.net/faq/",
+  "",
+  "If you think you need help by a real human come to the hashcat Discord:",
+  "",
+  "* https://hashcat.net/discord",
   NULL
 };
 

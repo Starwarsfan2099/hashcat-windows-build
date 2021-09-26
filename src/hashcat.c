@@ -148,11 +148,23 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
     return -1;
   }
 
-  const u64 progress_restored = status_ctx->words_off * amplifier_cnt;
-
-  for (u32 i = 0; i < hashes->salts_cnt; i++)
+  if (user_options->attack_mode == ATTACK_MODE_ASSOCIATION)
   {
-    status_ctx->words_progress_restored[i] = progress_restored;
+    const u64 progress_restored = 1 * amplifier_cnt;
+
+    for (u32 i = 0; i < status_ctx->words_off; i++)
+    {
+      status_ctx->words_progress_restored[i] = progress_restored;
+    }
+  }
+  else
+  {
+    const u64 progress_restored = status_ctx->words_off * amplifier_cnt;
+
+    for (u32 i = 0; i < hashes->salts_cnt; i++)
+    {
+      status_ctx->words_progress_restored[i] = progress_restored;
+    }
   }
 
   #ifdef WITH_BRAIN
@@ -430,15 +442,17 @@ static int inner1_loop (hashcat_ctx_t *hashcat_ctx)
 
 static int outer_loop (hashcat_ctx_t *hashcat_ctx)
 {
-  hashconfig_t   *hashconfig    = hashcat_ctx->hashconfig;
-  hashes_t       *hashes        = hashcat_ctx->hashes;
-  mask_ctx_t     *mask_ctx      = hashcat_ctx->mask_ctx;
-  backend_ctx_t  *backend_ctx   = hashcat_ctx->backend_ctx;
-  outcheck_ctx_t *outcheck_ctx  = hashcat_ctx->outcheck_ctx;
-  restore_ctx_t  *restore_ctx   = hashcat_ctx->restore_ctx;
-  status_ctx_t   *status_ctx    = hashcat_ctx->status_ctx;
-  straight_ctx_t *straight_ctx  = hashcat_ctx->straight_ctx;
-  user_options_t *user_options  = hashcat_ctx->user_options;
+  hashconfig_t         *hashconfig          = hashcat_ctx->hashconfig;
+  hashes_t             *hashes              = hashcat_ctx->hashes;
+  mask_ctx_t           *mask_ctx            = hashcat_ctx->mask_ctx;
+  module_ctx_t         *module_ctx          = hashcat_ctx->module_ctx;
+  backend_ctx_t        *backend_ctx         = hashcat_ctx->backend_ctx;
+  outcheck_ctx_t       *outcheck_ctx        = hashcat_ctx->outcheck_ctx;
+  restore_ctx_t        *restore_ctx         = hashcat_ctx->restore_ctx;
+  status_ctx_t         *status_ctx          = hashcat_ctx->status_ctx;
+  straight_ctx_t       *straight_ctx        = hashcat_ctx->straight_ctx;
+  user_options_t       *user_options        = hashcat_ctx->user_options;
+  user_options_extra_t *user_options_extra  = hashcat_ctx->user_options_extra;
 
   status_ctx->devices_status = STATUS_INIT;
 
@@ -462,6 +476,46 @@ static int outer_loop (hashcat_ctx_t *hashcat_ctx)
   }
 
   EVENT (EVENT_HASHCONFIG_POST);
+
+  /**
+   * deprecated notice
+   */
+
+  if (module_ctx->module_deprecated_notice != MODULE_DEFAULT)
+  {
+    if (user_options->deprecated_check_disable == false)
+    {
+      if ((user_options->show == true) || (user_options->left == true))
+      {
+        const char *module_deprecated_notice = module_ctx->module_deprecated_notice (hashconfig, user_options, user_options_extra);
+
+        event_log_warning (hashcat_ctx, "%s", module_deprecated_notice);
+        event_log_warning (hashcat_ctx, NULL);
+      }
+      else if (user_options->benchmark == true)
+      {
+        if (user_options->hash_mode_chgd == true)
+        {
+          const char *module_deprecated_notice = module_ctx->module_deprecated_notice (hashconfig, user_options, user_options_extra);
+
+          event_log_warning (hashcat_ctx, "%s", module_deprecated_notice);
+          event_log_warning (hashcat_ctx, NULL);
+        }
+        else
+        {
+          return 0;
+        }
+      }
+      else
+      {
+        const char *module_deprecated_notice = module_ctx->module_deprecated_notice (hashconfig, user_options, user_options_extra);
+
+        event_log_error (hashcat_ctx, "%s", module_deprecated_notice);
+
+        return 0;
+      }
+    }
+  }
 
   /**
    * generate hashlist filename for later use
@@ -868,7 +922,10 @@ static int outer_loop (hashcat_ctx_t *hashcat_ctx)
 
   // clean up
 
+  #ifdef WITH_BRAIN
   brain_ctx_destroy       (hashcat_ctx);
+  #endif
+
   bitmap_ctx_destroy      (hashcat_ctx);
   combinator_ctx_destroy  (hashcat_ctx);
   cpt_ctx_destroy         (hashcat_ctx);
@@ -1036,13 +1093,13 @@ int hashcat_session_init (hashcat_ctx_t *hashcat_ctx, const char *install_folder
     }
   }
   #endif
-  #endif
 
   /**
    * brain
    */
 
   if (brain_ctx_init (hashcat_ctx) == -1) return -1;
+  #endif
 
   /**
    * logfile
@@ -1582,6 +1639,8 @@ int hashcat_session_execute (hashcat_ctx_t *hashcat_ctx)
 
   if (user_options->benchmark == true)
   {
+    const bool quiet_sav = user_options->quiet;
+
     user_options->quiet = true;
 
     if (user_options->hash_mode_chgd == true)
@@ -1606,17 +1665,19 @@ int hashcat_session_execute (hashcat_ctx_t *hashcat_ctx)
       }
     }
 
-    user_options->quiet = false;
+    user_options->quiet = quiet_sav;
   }
   else
   {
+    const bool quiet_sav = user_options->quiet;
+
     if (user_options->speed_only == true) user_options->quiet = true;
 
     rc_final = outer_loop (hashcat_ctx);
 
     if (rc_final == -1) myabort (hashcat_ctx);
 
-    if (user_options->speed_only == true) user_options->quiet = false;
+    if (user_options->speed_only == true) user_options->quiet = quiet_sav;
   }
 
   EVENT (EVENT_OUTERLOOP_FINISHED);

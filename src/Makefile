@@ -6,7 +6,7 @@
 SHARED                  ?= 0
 DEBUG                   := 0
 PRODUCTION              := 0
-PRODUCTION_VERSION      := v6.2.2
+PRODUCTION_VERSION      := v6.2.4
 ENABLE_CUBIN            ?= 1
 ENABLE_BRAIN            ?= 1
 ENABLE_UNRAR            ?= 1
@@ -53,7 +53,7 @@ endif
 ## Do not modify
 ##
 
-MODULE_INTERFACE_VERSION := 620
+MODULE_INTERFACE_VERSION := 630
 
 ##
 ## Native compiler paths
@@ -192,23 +192,28 @@ CFLAGS                  += -Wno-enum-conversion
 CFLAGS                  += -Wno-typedef-redefinition
 endif
 
+ifeq ($(USE_SYSTEM_LZMA),0)
+CFLAGS_LZMA             += -D_7ZIP_ST
+CFLAGS_LZMA             += -Wno-misleading-indentation
+endif
+
 ## because ZLIB
 ifeq ($(USE_SYSTEM_ZLIB),0)
 CFLAGS_ZLIB             += -Wno-implicit-fallthrough
 CFLAGS_ZLIB             += -Wno-implicit-function-declaration
 CFLAGS_ZLIB             += -Wno-unused-parameter
 CFLAGS_ZLIB             += -DIOAPI_NO_64
+CFLAGS_ZLIB             += -DUNZ_BUFSIZE=262144
 endif
 
 ## because UNRAR
 ifeq ($(ENABLE_UNRAR),1)
 ifeq ($(USE_SYSTEM_UNRAR),0)
-ifneq ($(UNAME),Darwin)
-CFLAGS_UNRAR            += -Wno-misleading-indentation
+ifneq ($(CC),clang)
 CFLAGS_UNRAR            += -Wno-class-memaccess
-else
-CFLAGS_UNRAR            += -Wno-missing-braces
+CFLAGS_UNRAR            += -Wno-misleading-indentation
 endif
+CFLAGS_UNRAR            += -Wno-missing-braces
 CFLAGS_UNRAR            += -Wno-unused-variable
 CFLAGS_UNRAR            += -Wno-unused-parameter
 CFLAGS_UNRAR            += -Wno-unused-function
@@ -360,7 +365,7 @@ EMU_OBJS_ALL            += emu_inc_rp emu_inc_rp_optimized
 EMU_OBJS_ALL            += emu_inc_hash_md4 emu_inc_hash_md5 emu_inc_hash_ripemd160 emu_inc_hash_sha1 emu_inc_hash_sha256 emu_inc_hash_sha384 emu_inc_hash_sha512 emu_inc_hash_streebog256 emu_inc_hash_streebog512 emu_inc_ecc_secp256k1
 EMU_OBJS_ALL            += emu_inc_cipher_aes emu_inc_cipher_camellia emu_inc_cipher_des emu_inc_cipher_kuznyechik emu_inc_cipher_serpent emu_inc_cipher_twofish
 
-OBJS_ALL                := affinity autotune backend benchmark bitmap bitops combinator common convert cpt cpu_crc32 debugfile dictstat dispatch dynloader event ext_ADL ext_cuda ext_nvapi ext_nvml ext_nvrtc ext_OpenCL ext_sysfs ext_iokit ext_lzma filehandling folder hashcat hashes hlfmt hwmon induct interface keyboard_layout locking logfile loopback memory monitor mpsp outfile_check outfile pidfile potfile restore rp rp_cpu selftest slow_candidates shared status stdout straight terminal thread timer tuningdb usage user_options wordlist $(EMU_OBJS_ALL)
+OBJS_ALL                := affinity autotune backend benchmark bitmap bitops combinator common convert cpt cpu_crc32 debugfile dictstat dispatch dynloader event ext_ADL ext_cuda ext_hip ext_nvapi ext_nvml ext_nvrtc ext_hiprtc ext_OpenCL ext_sysfs_amdgpu ext_sysfs_cpu ext_iokit ext_lzma filehandling folder hashcat hashes hlfmt hwmon induct interface keyboard_layout locking logfile loopback memory monitor mpsp outfile_check outfile pidfile potfile restore rp rp_cpu selftest slow_candidates shared status stdout straight terminal thread timer tuningdb usage user_options wordlist $(EMU_OBJS_ALL)
 
 ifeq ($(ENABLE_BRAIN),1)
 OBJS_ALL                += brain
@@ -371,28 +376,28 @@ LINUX_OBJS              := $(foreach OBJ,$(OBJS_ALL),obj/$(OBJ).LINUX.o)
 WIN_OBJS                := $(foreach OBJ,$(OBJS_ALL),obj/$(OBJ).WIN.o)
 
 ifeq ($(USE_SYSTEM_LZMA),0)
-OBJS_LZMA               := Alloc Lzma2Dec LzmaDec
+OBJS_LZMA               := 7zCrc 7zCrcOpt 7zFile 7zStream Alloc Bra Bra86 BraIA64 CpuArch Delta LzmaDec Lzma2Dec Sha256 Sha256Opt Xz XzCrc64 XzCrc64Opt XzDec XzIn
 
-NATIVE_OBJS             += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).NATIVE.o)
-LINUX_OBJS              += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).LINUX.o)
-WIN_OBJS                += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).WIN.o)
+NATIVE_OBJS             += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).LZMA.NATIVE.o)
+LINUX_OBJS              += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).LZMA.LINUX.o)
+WIN_OBJS                += $(foreach OBJ,$(OBJS_LZMA),obj/$(OBJ).LZMA.WIN.o)
 endif
 
 ifeq ($(USE_SYSTEM_ZLIB),0)
 OBJS_ZLIB               := adler32 crc32 deflate inflate inffast inftrees trees gzread gzwrite gzclose zutil gzlib contrib/minizip/unzip contrib/minizip/ioapi
 
-NATIVE_OBJS             += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).NATIVE.o)
-LINUX_OBJS              += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).LINUX.o)
-WIN_OBJS                += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).WIN.o)
+NATIVE_OBJS             += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).ZLIB.NATIVE.o)
+LINUX_OBJS              += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).ZLIB.LINUX.o)
+WIN_OBJS                += $(foreach OBJ,$(OBJS_ZLIB),obj/$(OBJ).ZLIB.WIN.o)
 endif
 
 ifeq ($(USE_SYSTEM_XXHASH),0)
 ifeq ($(ENABLE_BRAIN),1)
 OBJS_XXHASH             := xxhash
 
-NATIVE_OBJS             += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).NATIVE.o)
-LINUX_OBJS              += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).LINUX.o)
-WIN_OBJS                += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).WIN.o)
+NATIVE_OBJS             += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).XXHASH.NATIVE.o)
+LINUX_OBJS              += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).XXHASH.LINUX.o)
+WIN_OBJS                += $(foreach OBJ,$(OBJS_XXHASH),obj/$(OBJ).XXHASH.WIN.o)
 endif
 endif
 
@@ -400,9 +405,9 @@ ifeq ($(ENABLE_UNRAR),1)
 ifeq ($(USE_SYSTEM_UNRAR),0)
 OBJS_UNRAR              := strlist strfn pathfn smallfn global file filefn filcreat archive arcread unicode system isnt crypt crc rawread encname resource match timefn rdwrfn consio options errhnd rarvm secpassword rijndael getbits sha1 sha256 blake2s hash extinfo extract volume list find unpack headers threadpool rs16 cmddata ui filestr recvol rs scantree qopen hc_decompress_rar
 
-NATIVE_OBJS             += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).NATIVE.o)
-LINUX_OBJS              += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).LINUX.o)
-WIN_OBJS                += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).WIN.o)
+NATIVE_OBJS             += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).UNRAR.NATIVE.o)
+LINUX_OBJS              += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).UNRAR.LINUX.o)
+WIN_OBJS                += $(foreach OBJ,$(OBJS_UNRAR),obj/$(OBJ).UNRAR.WIN.o)
 endif
 endif
 
@@ -563,25 +568,25 @@ obj/%.NATIVE.o: src/%.c
 	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $< -o $@ -fpic
 
 ifeq ($(USE_SYSTEM_LZMA),0)
-obj/%.NATIVE.o: $(DEPS_LZMA_PATH)/%.c
-	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $< -o $@ -fpic
+obj/%.LZMA.NATIVE.o: $(DEPS_LZMA_PATH)/%.c
+	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $(CFLAGS_LZMA) $< -o $@ -fpic
 endif
 
 ifeq ($(USE_SYSTEM_ZLIB),0)
-obj/%.NATIVE.o: $(DEPS_ZLIB_PATH)/%.c
+obj/%.ZLIB.NATIVE.o: $(DEPS_ZLIB_PATH)/%.c
 	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $(CFLAGS_ZLIB) $< -o $@ -fpic
 endif
 
 ifeq ($(USE_SYSTEM_XXHASH),0)
 ifeq ($(ENABLE_BRAIN),1)
-obj/%.NATIVE.o: $(DEPS_XXHASH_PATH)/%.c
+obj/%.XXHASH.NATIVE.o: $(DEPS_XXHASH_PATH)/%.c
 	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $< -o $@ -fpic
 endif
 endif
 
 ifeq ($(ENABLE_UNRAR),1)
 ifeq ($(USE_SYSTEM_UNRAR),0)
-obj/%.NATIVE.o: $(DEPS_UNRAR_PATH)/%.cpp
+obj/%.UNRAR.NATIVE.o: $(DEPS_UNRAR_PATH)/%.cpp
 	$(CXX) -c $(CXXFLAGS) $(CFLAGS_NATIVE) $(CFLAGS_UNRAR) $< -o $@ -fpic
 endif
 endif
@@ -736,37 +741,37 @@ obj/%.WIN.o:   src/%.c
 	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)   -c -o $@ $<
 
 ifeq ($(USE_SYSTEM_LZMA),0)
-obj/%.LINUX.o: $(DEPS_LZMA_PATH)/%.c
-	$(CC_LINUX) $(CCFLAGS) $(CFLAGS_CROSS_LINUX) -c -o $@ $<
+obj/%.LZMA.LINUX.o: $(DEPS_LZMA_PATH)/%.c
+	$(CC_LINUX) $(CCFLAGS) $(CFLAGS_CROSS_LINUX) $(CFLAGS_LZMA) -c -o $@ $<
 
-obj/%.WIN.o:   $(DEPS_LZMA_PATH)/%.c
-	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)   -c -o $@ $<
+obj/%.LZMA.WIN.o:   $(DEPS_LZMA_PATH)/%.c
+	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)   $(CFLAGS_LZMA) -c -o $@ $<
 endif
 
 ifeq ($(USE_SYSTEM_ZLIB),0)
-obj/%.LINUX.o: $(DEPS_ZLIB_PATH)/%.c
+obj/%.ZLIB.LINUX.o: $(DEPS_ZLIB_PATH)/%.c
 	$(CC_LINUX) $(CCFLAGS) $(CFLAGS_CROSS_LINUX) $(CFLAGS_ZLIB) -c -o $@ $<
 
-obj/%.WIN.o:   $(DEPS_ZLIB_PATH)/%.c
+obj/%.ZLIB.WIN.o:   $(DEPS_ZLIB_PATH)/%.c
 	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)   $(CFLAGS_ZLIB) -c -o $@ $<
 endif
 
 ifeq ($(USE_SYSTEM_XXHASH),0)
 ifeq ($(ENABLE_BRAIN),1)
-obj/%.LINUX.o: $(DEPS_XXHASH_PATH)/%.c
+obj/%.XXHASH.LINUX.o: $(DEPS_XXHASH_PATH)/%.c
 	$(CC_LINUX) $(CCFLAGS) $(CFLAGS_CROSS_LINUX) -c -o $@ $<
 
-obj/%.WIN.o:   $(DEPS_XXHASH_PATH)/%.c
+obj/%.XXHASH.WIN.o:   $(DEPS_XXHASH_PATH)/%.c
 	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)   -c -o $@ $<
 endif
 endif
 
 ifeq ($(ENABLE_UNRAR),1)
 ifeq ($(USE_SYSTEM_UNRAR),0)
-obj/%.LINUX.o: $(DEPS_UNRAR_PATH)/%.cpp
+obj/%.UNRAR.LINUX.o: $(DEPS_UNRAR_PATH)/%.cpp
 	$(CXX_LINUX) $(CXXFLAGS) $(CFLAGS_CROSS_LINUX) $(CFLAGS_UNRAR) -c -o $@ $<
 
-obj/%.WIN.o:   $(DEPS_UNRAR_PATH)/%.cpp
+obj/%.UNRAR.WIN.o:   $(DEPS_UNRAR_PATH)/%.cpp
 	$(CXX_WIN)   $(CXXFLAGS) $(CFLAGS_CROSS_WIN)   $(CFLAGS_UNRAR) -c -o $@ $<
 endif
 endif
@@ -787,3 +792,6 @@ hashcat.dll: src/main.c obj/combined.WIN.a $(WIN_ICONV)/lib/libiconv.a
 	$(CC_WIN)   $(CCFLAGS) $(CFLAGS_CROSS_WIN)      -o $@ $^ $(LFLAGS_CROSS_WIN)   -DCOMPTIME=$(COMPTIME) -DVERSION_TAG=\"$(VERSION_TAG)\" -shared
 
 endif
+
+# Give plugin developers a chance to add some 3rd party libraries
+include	$(wildcard src/modules/module_*.mk)

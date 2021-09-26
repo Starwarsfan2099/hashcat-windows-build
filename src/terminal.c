@@ -19,8 +19,8 @@
 
 static const size_t TERMINAL_LINE_LENGTH = 79;
 
-static const char *PROMPT_ACTIVE = "[s]tatus [p]ause [b]ypass [c]heckpoint [f]inish [q]uit => ";
-static const char *PROMPT_PAUSED = "[s]tatus [r]esume [b]ypass [c]heckpoint [f]inish [q]uit => ";
+static const char *const PROMPT_ACTIVE = "[s]tatus [p]ause [b]ypass [c]heckpoint [f]inish [q]uit => ";
+static const char *const PROMPT_PAUSED = "[s]tatus [r]esume [b]ypass [c]heckpoint [f]inish [q]uit => ";
 
 void welcome_screen (hashcat_ctx_t *hashcat_ctx, const char *version_tag)
 {
@@ -117,7 +117,7 @@ void goodbye_screen (hashcat_ctx_t *hashcat_ctx, const time_t proc_start, const 
   if (user_options->identify    == true) return;
 
   char start_buf[32]; memset (start_buf, 0, sizeof (start_buf));
-  char stop_buf[32];  memset (start_buf, 0, sizeof (stop_buf));
+  char stop_buf[32];  memset (stop_buf,  0, sizeof (stop_buf));
 
   event_log_info_nn (hashcat_ctx, "Started: %s", ctime_r (&proc_start, start_buf));
   event_log_info_nn (hashcat_ctx, "Stopped: %s", ctime_r (&proc_stop,  stop_buf));
@@ -623,7 +623,7 @@ void compress_terminal_line_length (char *out_buf, const size_t keep_from_beginn
   *ptr1 = 0;
 }
 
-void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_t *user_options)
+void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_options_extra)
 {
   if (hashconfig_init (hashcat_ctx) == 0)
   {
@@ -640,7 +640,7 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_t *user_options)
     if (hashconfig->is_salted == true)
     {
       u32 t = hashconfig->salt_type;
-      char *t_desc = (t == SALT_TYPE_EMBEDDED) ? "Embedded\0" : (t == SALT_TYPE_GENERIC) ? "Generic\0" : "Virtual\0";
+      const char *t_desc = (t == SALT_TYPE_EMBEDDED) ? "Embedded\0" : (t == SALT_TYPE_GENERIC) ? "Generic\0" : "Virtual\0";
       event_log_info (hashcat_ctx, "  Salt.Type...........: %s", t_desc);
       event_log_info (hashcat_ctx, "  Salt.Len.Min........: %d", hashconfig->salt_min);
       event_log_info (hashcat_ctx, "  Salt.Len.Max........: %d", hashconfig->salt_max);
@@ -676,7 +676,7 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_t *user_options)
         event_log_info (hashcat_ctx, "  Example.Hash........: %s", hashconfig->st_hash);
       }
 
-      if (need_hexify ((const u8 *) hashconfig->st_pass, strlen (hashconfig->st_pass), user_options->separator, false))
+      if (need_hexify ((const u8 *) hashconfig->st_pass, strlen (hashconfig->st_pass), user_options_extra->separator, false))
       {
         char *tmp_buf = (char *) hcmalloc (HCBUFSIZ_LARGE);
 
@@ -728,8 +728,9 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_t *user_options)
 
 void hash_info (hashcat_ctx_t *hashcat_ctx)
 {
-  folder_config_t *folder_config = hashcat_ctx->folder_config;
-  user_options_t  *user_options  = hashcat_ctx->user_options;
+  folder_config_t      *folder_config      = hashcat_ctx->folder_config;
+  user_options_t       *user_options       = hashcat_ctx->user_options;
+  user_options_extra_t *user_options_extra = hashcat_ctx->user_options_extra;
 
   event_log_info (hashcat_ctx, "Hash Info:");
   event_log_info (hashcat_ctx, "==========");
@@ -737,7 +738,7 @@ void hash_info (hashcat_ctx_t *hashcat_ctx)
 
   if (user_options->hash_mode_chgd == true)
   {
-    hash_info_single (hashcat_ctx, user_options);
+    hash_info_single (hashcat_ctx, user_options_extra);
   }
   else
   {
@@ -751,7 +752,7 @@ void hash_info (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_exist (modulefile) == false) continue;
 
-      hash_info_single (hashcat_ctx, user_options);
+      hash_info_single (hashcat_ctx, user_options_extra);
     }
 
     hcfree (modulefile);
@@ -777,6 +778,66 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
     for (int cuda_devices_idx = 0; cuda_devices_idx < cuda_devices_cnt; cuda_devices_idx++)
     {
       const int backend_devices_idx = backend_ctx->backend_device_from_cuda[cuda_devices_idx];
+
+      const hc_device_param_t *device_param = backend_ctx->devices_param + backend_devices_idx;
+
+      int   device_id                 = device_param->device_id;
+      char *device_name               = device_param->device_name;
+      u32   device_processors         = device_param->device_processors;
+      u32   device_maxclock_frequency = device_param->device_maxclock_frequency;
+      u64   device_available_mem      = device_param->device_available_mem;
+      u64   device_global_mem         = device_param->device_global_mem;
+      u8    pcie_domain               = device_param->pcie_domain;
+      u8    pcie_bus                  = device_param->pcie_bus;
+      u8    pcie_device               = device_param->pcie_device;
+      u8    pcie_function             = device_param->pcie_function;
+
+      if (device_param->device_id_alias_cnt)
+      {
+        event_log_info (hashcat_ctx, "Backend Device ID #%d (Alias: #%d)", device_id + 1, device_param->device_id_alias_buf[0] + 1);
+      }
+      else
+      {
+        event_log_info (hashcat_ctx, "Backend Device ID #%d", device_id + 1);
+      }
+
+      event_log_info (hashcat_ctx, "  Name...........: %s", device_name);
+      event_log_info (hashcat_ctx, "  Processor(s)...: %u", device_processors);
+      event_log_info (hashcat_ctx, "  Clock..........: %u", device_maxclock_frequency);
+      event_log_info (hashcat_ctx, "  Memory.Total...: %" PRIu64 " MB", device_global_mem / 1024 / 1024);
+      event_log_info (hashcat_ctx, "  Memory.Free....: %" PRIu64 " MB", device_available_mem / 1024 / 1024);
+      event_log_info (hashcat_ctx, "  PCI.Addr.BDFe..: %04x:%02x:%02x.%d", (u16) pcie_domain, pcie_bus, pcie_device, pcie_function);
+      event_log_info (hashcat_ctx, NULL);
+    }
+  }
+
+  if (backend_ctx->hip)
+  {
+    event_log_info (hashcat_ctx, "HIP Info:");
+    event_log_info (hashcat_ctx, "=========");
+    event_log_info (hashcat_ctx, NULL);
+
+    int hip_devices_cnt    = backend_ctx->hip_devices_cnt;
+    int hip_runtimeVersion = backend_ctx->hip_runtimeVersion;
+
+    if (hip_runtimeVersion > 1000)
+    {
+      int hip_version_major = (hip_runtimeVersion - 0) / 10000000;
+      int hip_version_minor = (hip_runtimeVersion - (hip_version_major * 10000000)) / 100000;
+      int hip_version_patch = (hip_runtimeVersion - (hip_version_major * 10000000) - (hip_version_minor * 100000));
+
+      event_log_info (hashcat_ctx, "HIP.Version.: %d.%d.%d", hip_version_major, hip_version_minor, hip_version_patch);
+      event_log_info (hashcat_ctx, NULL);
+    }
+    else
+    {
+      event_log_info (hashcat_ctx, "HIP.Version.: %d.%d", hip_runtimeVersion / 100, hip_runtimeVersion % 10);
+      event_log_info (hashcat_ctx, NULL);
+    }
+
+    for (int hip_devices_idx = 0; hip_devices_idx < hip_devices_cnt; hip_devices_idx++)
+    {
+      const int backend_devices_idx = backend_ctx->backend_device_from_hip[hip_devices_idx];
 
       const hc_device_param_t *device_param = backend_ctx->devices_param + backend_devices_idx;
 
@@ -908,6 +969,10 @@ void backend_info_compact (hashcat_ctx_t *hashcat_ctx)
   if (user_options->machine_readable == true) return;
   if (user_options->status_json      == true) return;
 
+  /**
+   * CUDA
+   */
+
   if (backend_ctx->cuda)
   {
     int cuda_devices_cnt    = backend_ctx->cuda_devices_cnt;
@@ -954,6 +1019,74 @@ void backend_info_compact (hashcat_ctx_t *hashcat_ctx)
 
     event_log_info (hashcat_ctx, NULL);
   }
+
+  /**
+   * HIP
+   */
+
+  if (backend_ctx->hip)
+  {
+    int hip_devices_cnt    = backend_ctx->hip_devices_cnt;
+    int hip_runtimeVersion = backend_ctx->hip_runtimeVersion;
+
+    size_t len;
+
+    if (hip_runtimeVersion > 1000)
+    {
+      int hip_version_major = (hip_runtimeVersion - 0) / 10000000;
+      int hip_version_minor = (hip_runtimeVersion - (hip_version_major * 10000000)) / 100000;
+      int hip_version_patch = (hip_runtimeVersion - (hip_version_major * 10000000) - (hip_version_minor * 100000));
+
+      len = event_log_info (hashcat_ctx, "HIP API (HIP %d.%d.%d)", hip_version_major, hip_version_minor, hip_version_patch);
+    }
+    else
+    {
+      len = event_log_info (hashcat_ctx, "HIP API (HIP %d.%d)", hip_runtimeVersion / 100, hip_runtimeVersion % 10);
+    }
+
+    char line[HCBUFSIZ_TINY] = { 0 };
+
+    memset (line, '=', len);
+
+    line[len] = 0;
+
+    event_log_info (hashcat_ctx, "%s", line);
+
+    for (int hip_devices_idx = 0; hip_devices_idx < hip_devices_cnt; hip_devices_idx++)
+    {
+      const int backend_devices_idx = backend_ctx->backend_device_from_hip[hip_devices_idx];
+
+      const hc_device_param_t *device_param = backend_ctx->devices_param + backend_devices_idx;
+
+      int   device_id            = device_param->device_id;
+      char *device_name          = device_param->device_name;
+      u32   device_processors    = device_param->device_processors;
+      u64   device_global_mem    = device_param->device_global_mem;
+      u64   device_available_mem = device_param->device_available_mem;
+
+      if ((device_param->skipped == false) && (device_param->skipped_warning == false))
+      {
+        event_log_info (hashcat_ctx, "* Device #%u: %s, %" PRIu64 "/%" PRIu64 " MB, %uMCU",
+                  device_id + 1,
+                  device_name,
+                  device_available_mem / 1024 / 1024,
+                  device_global_mem    / 1024 / 1024,
+                  device_processors);
+      }
+      else
+      {
+        event_log_info (hashcat_ctx, "* Device #%u: %s, skipped",
+                  device_id + 1,
+                  device_name);
+      }
+    }
+
+    event_log_info (hashcat_ctx, NULL);
+  }
+
+  /**
+   * OpenCL
+   */
 
   if (backend_ctx->ocl)
   {
@@ -1290,7 +1423,8 @@ void status_display (hashcat_ctx_t *hashcat_ctx)
     hashcat_status->status_string);
 
   event_log_info (hashcat_ctx,
-    "Hash.Name........: %s",
+    "Hash.Mode........: %d (%s)",
+    hashconfig->hash_mode,
     hashcat_status->hash_name);
 
   event_log_info (hashcat_ctx,

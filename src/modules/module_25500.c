@@ -74,6 +74,12 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
     return jit_build_options;
   }
 
+  // HIP
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
+  {
+    hc_asprintf (&jit_build_options, "-D _unroll");
+  }
+
   // ROCM
   if ((device_param->opencl_device_vendor_id == VENDOR_ID_AMD) && (device_param->has_vperm == true))
   {
@@ -241,9 +247,9 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   // salt
 
-  #define SALT_LEN_BASE64 ((16 * 8) / 6) + 3
-  #define IV_LEN_BASE64   ((12 * 8) / 6) + 3
-  #define CT_LEN_BASE64   ((72 * 8) / 6) + 3
+  #define SALT_LEN_BASE64 ((16 * 8) / 6) + 3 + 1 // 25 vs 24
+  #define IV_LEN_BASE64   ((12 * 8) / 6) + 1     // 17 vs 16
+  #define CT_LEN_BASE64   ((72 * 8) / 6) + 1     // 97 vs 96
 
   u8 salt_buf[SALT_LEN_BASE64] = { 0 };
 
@@ -299,6 +305,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_benchmark_salt           = MODULE_DEFAULT;
   module_ctx->module_build_plain_postprocess  = MODULE_DEFAULT;
   module_ctx->module_deep_comp_kernel         = MODULE_DEFAULT;
+  module_ctx->module_deprecated_notice        = MODULE_DEFAULT;
   module_ctx->module_dgst_pos0                = module_dgst_pos0;
   module_ctx->module_dgst_pos1                = module_dgst_pos1;
   module_ctx->module_dgst_pos2                = module_dgst_pos2;
@@ -308,6 +315,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_esalt_size               = module_esalt_size;
   module_ctx->module_extra_buffer_size        = MODULE_DEFAULT;
   module_ctx->module_extra_tmp_size           = MODULE_DEFAULT;
+  module_ctx->module_extra_tuningdb_block     = MODULE_DEFAULT;
   module_ctx->module_forced_outfile_format    = MODULE_DEFAULT;
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;

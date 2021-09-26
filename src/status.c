@@ -18,29 +18,29 @@
 #include "shared.h"
 #include "status.h"
 
-static const char *ST_0000 = "Initializing";
-static const char *ST_0001 = "Autotuning";
-static const char *ST_0002 = "Selftest";
-static const char *ST_0003 = "Running";
-static const char *ST_0004 = "Paused";
-static const char *ST_0005 = "Exhausted";
-static const char *ST_0006 = "Cracked";
-static const char *ST_0007 = "Aborted";
-static const char *ST_0008 = "Quit";
-static const char *ST_0009 = "Bypass";
-static const char *ST_0010 = "Aborted (Checkpoint)";
-static const char *ST_0011 = "Aborted (Runtime)";
-static const char *ST_0012 = "Running (Checkpoint Quit requested)";
-static const char *ST_0013 = "Error";
-static const char *ST_0014 = "Aborted (Finish)";
-static const char *ST_0015 = "Running (Quit after attack requested)";
-static const char *ST_0016 = "Autodetect";
-static const char *ST_9999 = "Unknown! Bug!";
+static const char *const  ST_0000 = "Initializing";
+static const char *const  ST_0001 = "Autotuning";
+static const char *const  ST_0002 = "Selftest";
+static const char *const  ST_0003 = "Running";
+static const char *const  ST_0004 = "Paused";
+static const char *const  ST_0005 = "Exhausted";
+static const char *const  ST_0006 = "Cracked";
+static const char *const  ST_0007 = "Aborted";
+static const char *const  ST_0008 = "Quit";
+static const char *const  ST_0009 = "Bypass";
+static const char *const  ST_0010 = "Aborted (Checkpoint)";
+static const char *const  ST_0011 = "Aborted (Runtime)";
+static const char *const  ST_0012 = "Running (Checkpoint Quit requested)";
+static const char *const  ST_0013 = "Error";
+static const char *const  ST_0014 = "Aborted (Finish)";
+static const char *const  ST_0015 = "Running (Quit after attack requested)";
+static const char *const  ST_0016 = "Autodetect";
+static const char *const  ST_9999 = "Unknown! Bug!";
 
 static const char UNITS[7] = { ' ', 'k', 'M', 'G', 'T', 'P', 'E' };
 
-static const char *ETA_ABSOLUTE_MAX_EXCEEDED = "Next Big Bang"; // in honor of ighashgpu
-static const char *ETA_RELATIVE_MAX_EXCEEDED = "> 10 years";
+static const char *const  ETA_ABSOLUTE_MAX_EXCEEDED = "Next Big Bang"; // in honor of ighashgpu
+static const char *const  ETA_RELATIVE_MAX_EXCEEDED = "> 10 years";
 
 static char *status_get_rules_file (const hashcat_ctx_t *hashcat_ctx)
 {
@@ -1261,9 +1261,10 @@ u64 status_get_progress_cur (const hashcat_ctx_t *hashcat_ctx)
 
 u64 status_get_progress_ignore (const hashcat_ctx_t *hashcat_ctx)
 {
-  const hashes_t       *hashes        = hashcat_ctx->hashes;
-  const status_ctx_t   *status_ctx    = hashcat_ctx->status_ctx;
-  const user_options_t *user_options  = hashcat_ctx->user_options;
+  const hashes_t             *hashes             = hashcat_ctx->hashes;
+  const status_ctx_t         *status_ctx         = hashcat_ctx->status_ctx;
+  const user_options_t       *user_options       = hashcat_ctx->user_options;
+  const user_options_extra_t *user_options_extra = hashcat_ctx->user_options_extra;
 
   if (user_options->attack_mode == ATTACK_MODE_ASSOCIATION)
   {
@@ -1273,6 +1274,27 @@ u64 status_get_progress_ignore (const hashcat_ctx_t *hashcat_ctx)
     return 0;
   }
 
+  u64 words_cnt = status_ctx->words_cnt;
+
+  if (user_options->limit)
+  {
+    const combinator_ctx_t *combinator_ctx = hashcat_ctx->combinator_ctx;
+    const mask_ctx_t       *mask_ctx       = hashcat_ctx->mask_ctx;
+    const straight_ctx_t   *straight_ctx   = hashcat_ctx->straight_ctx;
+
+    words_cnt = MIN (user_options->limit, status_ctx->words_base);
+
+    if (user_options->slow_candidates == true)
+    {
+      // nothing to do
+    }
+    else
+    {
+      if      (user_options_extra->attack_kern == ATTACK_KERN_STRAIGHT) words_cnt  *= straight_ctx->kernel_rules_cnt;
+      else if (user_options_extra->attack_kern == ATTACK_KERN_COMBI)    words_cnt  *= combinator_ctx->combs_cnt;
+      else if (user_options_extra->attack_kern == ATTACK_KERN_BF)       words_cnt  *= mask_ctx->bfs_cnt;
+    }
+  }
   // Important for ETA only
 
   u64 progress_ignore = 0;
@@ -1285,7 +1307,7 @@ u64 status_get_progress_ignore (const hashcat_ctx_t *hashcat_ctx)
                     + status_ctx->words_progress_rejected[salt_pos]
                     + status_ctx->words_progress_restored[salt_pos];
 
-      const u64 left = status_ctx->words_cnt - all;
+      const u64 left = words_cnt - all;
 
       progress_ignore += left;
     }
@@ -2171,6 +2193,8 @@ int status_get_kernel_threads_dev (const hashcat_ctx_t *hashcat_ctx, const int b
   if (device_param->skipped == true) return 0;
 
   if (device_param->skipped_warning == true) return 0;
+
+  if (device_param->kernel_threads_prev) return device_param->kernel_threads_prev;
 
   return device_param->kernel_threads;
 }
