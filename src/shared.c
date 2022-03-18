@@ -15,6 +15,10 @@
 #include <sys/cygwin.h>
 #endif
 
+#if defined (__APPLE__)
+#include <sys/sysctl.h>
+#endif
+
 static const char *const PA_000 = "OK";
 static const char *const PA_001 = "Ignored due to comment";
 static const char *const PA_002 = "Ignored due to zero length";
@@ -74,6 +78,7 @@ static const char *const OPTI_STR_SINGLE_HASH          = "Single-Hash";
 static const char *const OPTI_STR_SINGLE_SALT          = "Single-Salt";
 static const char *const OPTI_STR_BRUTE_FORCE          = "Brute-Force";
 static const char *const OPTI_STR_RAW_HASH             = "Raw-Hash";
+static const char *const OPTI_STR_REGISTER_LIMIT       = "Register-Limit";
 static const char *const OPTI_STR_SLOW_HASH_SIMD_INIT  = "Slow-Hash-SIMD-INIT";
 static const char *const OPTI_STR_SLOW_HASH_SIMD_LOOP  = "Slow-Hash-SIMD-LOOP";
 static const char *const OPTI_STR_SLOW_HASH_SIMD_COMP  = "Slow-Hash-SIMD-COMP";
@@ -84,23 +89,23 @@ static const char *const OPTI_STR_USES_BITS_64         = "Uses-64-Bit";
 
 static const char *const HASH_CATEGORY_UNDEFINED_STR              = "Undefined";
 static const char *const HASH_CATEGORY_RAW_HASH_STR               = "Raw Hash";
-static const char *const HASH_CATEGORY_RAW_HASH_SALTED_STR        = "Raw Hash, Salted and/or Iterated";
-static const char *const HASH_CATEGORY_RAW_HASH_AUTHENTICATED_STR = "Raw Hash, Authenticated";
-static const char *const HASH_CATEGORY_RAW_CIPHER_KPA_STR         = "Raw Cipher, Known-Plaintext attack";
+static const char *const HASH_CATEGORY_RAW_HASH_SALTED_STR        = "Raw Hash salted and/or iterated";
+static const char *const HASH_CATEGORY_RAW_HASH_AUTHENTICATED_STR = "Raw Hash authenticated";
+static const char *const HASH_CATEGORY_RAW_CIPHER_KPA_STR         = "Raw Cipher, Known-plaintext attack";
 static const char *const HASH_CATEGORY_GENERIC_KDF_STR            = "Generic KDF";
-static const char *const HASH_CATEGORY_NETWORK_PROTOCOL_STR       = "Network Protocols";
+static const char *const HASH_CATEGORY_NETWORK_PROTOCOL_STR       = "Network Protocol";
 static const char *const HASH_CATEGORY_FORUM_SOFTWARE_STR         = "Forums, CMS, E-Commerce";
 static const char *const HASH_CATEGORY_DATABASE_SERVER_STR        = "Database Server";
 static const char *const HASH_CATEGORY_NETWORK_SERVER_STR         = "FTP, HTTP, SMTP, LDAP Server";
 static const char *const HASH_CATEGORY_RAW_CHECKSUM_STR           = "Raw Checksum";
 static const char *const HASH_CATEGORY_OS_STR                     = "Operating System";
 static const char *const HASH_CATEGORY_EAS_STR                    = "Enterprise Application Software (EAS)";
-static const char *const HASH_CATEGORY_ARCHIVE_STR                = "Archives";
+static const char *const HASH_CATEGORY_ARCHIVE_STR                = "Archive";
 static const char *const HASH_CATEGORY_FDE_STR                    = "Full-Disk Encryption (FDE)";
 static const char *const HASH_CATEGORY_FBE_STR                    = "File-Based Encryption (FBE)";
-static const char *const HASH_CATEGORY_DOCUMENTS_STR              = "Documents";
-static const char *const HASH_CATEGORY_PASSWORD_MANAGER_STR       = "Password Managers";
-static const char *const HASH_CATEGORY_OTP_STR                    = "One-Time Passwords";
+static const char *const HASH_CATEGORY_DOCUMENTS_STR              = "Document";
+static const char *const HASH_CATEGORY_PASSWORD_MANAGER_STR       = "Password Manager";
+static const char *const HASH_CATEGORY_OTP_STR                    = "One-Time Password";
 static const char *const HASH_CATEGORY_PLAIN_STR                  = "Plaintext";
 static const char *const HASH_CATEGORY_FRAMEWORK_STR              = "Framework";
 static const char *const HASH_CATEGORY_PRIVATE_KEY_STR            = "Private Key";
@@ -1002,6 +1007,7 @@ const char *stroptitype (const u32 opti_type)
     case OPTI_TYPE_SINGLE_SALT:         return OPTI_STR_SINGLE_SALT;
     case OPTI_TYPE_BRUTE_FORCE:         return OPTI_STR_BRUTE_FORCE;
     case OPTI_TYPE_RAW_HASH:            return OPTI_STR_RAW_HASH;
+    case OPTI_TYPE_REGISTER_LIMIT:      return OPTI_STR_REGISTER_LIMIT;
     case OPTI_TYPE_SLOW_HASH_SIMD_INIT: return OPTI_STR_SLOW_HASH_SIMD_INIT;
     case OPTI_TYPE_SLOW_HASH_SIMD_LOOP: return OPTI_STR_SLOW_HASH_SIMD_LOOP;
     case OPTI_TYPE_SLOW_HASH_SIMD_COMP: return OPTI_STR_SLOW_HASH_SIMD_COMP;
@@ -1108,7 +1114,7 @@ const u8 *hc_strchr_last (const u8 *input_buf, const int input_len, const u8 sep
   return NULL;
 }
 
-int input_tokenizer (const u8 *input_buf, const int input_len, token_t *token)
+int input_tokenizer (const u8 *input_buf, const int input_len, hc_token_t *token)
 {
   int len_left = input_len;
 
@@ -1369,3 +1375,17 @@ int generic_salt_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, const u8 *
 
   return tmp_len;
 }
+
+#if defined (__APPLE__)
+
+bool is_apple_silicon (void)
+{
+  size_t size;
+  cpu_type_t cpu_type = 0;
+  size = sizeof (cpu_type);
+  sysctlbyname ("hw.cputype", &cpu_type, &size, NULL, 0);
+
+  return (cpu_type == 0x100000c);
+}
+
+#endif // __APPLE__

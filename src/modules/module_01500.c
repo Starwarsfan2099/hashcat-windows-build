@@ -151,7 +151,7 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   {
     if ((user_options->attack_mode == ATTACK_MODE_BF) && (hashes->salts_cnt == 1) && (user_options->slow_candidates == false))
     {
-      hc_asprintf (&jit_build_options, "-DDESCRYPT_SALT=%u", hashes->salts_buf[0].salt_buf[0] & 0xfff);
+      hc_asprintf (&jit_build_options, "-D DESCRYPT_SALT=%u", hashes->salts_buf[0].salt_buf[0] & 0xfff);
     }
 
     return jit_build_options;
@@ -161,7 +161,7 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   {
     if ((user_options->attack_mode == ATTACK_MODE_BF) && (hashes->salts_cnt == 1) && (user_options->slow_candidates == false))
     {
-      hc_asprintf (&jit_build_options, "-DDESCRYPT_SALT=%u -D _unroll", hashes->salts_buf[0].salt_buf[0] & 0xfff);
+      hc_asprintf (&jit_build_options, "-D DESCRYPT_SALT=%u -D _unroll", hashes->salts_buf[0].salt_buf[0] & 0xfff);
     }
   }
   // ROCM
@@ -169,7 +169,7 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   {
     if ((user_options->attack_mode == ATTACK_MODE_BF) && (hashes->salts_cnt == 1) && (user_options->slow_candidates == false))
     {
-      hc_asprintf (&jit_build_options, "-DDESCRYPT_SALT=%u -D _unroll", hashes->salts_buf[0].salt_buf[0] & 0xfff);
+      hc_asprintf (&jit_build_options, "-D DESCRYPT_SALT=%u -D _unroll", hashes->salts_buf[0].salt_buf[0] & 0xfff);
     }
   }
   // ROCM
@@ -177,7 +177,7 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   {
     if ((user_options->attack_mode == ATTACK_MODE_BF) && (hashes->salts_cnt == 1) && (user_options->slow_candidates == false))
     {
-      hc_asprintf (&jit_build_options, "-DDESCRYPT_SALT=%u -D _unroll -fno-experimental-new-pass-manager", hashes->salts_buf[0].salt_buf[0] & 0xfff);
+      hc_asprintf (&jit_build_options, "-D DESCRYPT_SALT=%u -D _unroll -fno-experimental-new-pass-manager", hashes->salts_buf[0].salt_buf[0] & 0xfff);
     }
     else
     {
@@ -188,7 +188,7 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   {
     if ((user_options->attack_mode == ATTACK_MODE_BF) && (hashes->salts_cnt == 1) && (user_options->slow_candidates == false))
     {
-      hc_asprintf (&jit_build_options, "-DDESCRYPT_SALT=%u", hashes->salts_buf[0].salt_buf[0] & 0xfff);
+      hc_asprintf (&jit_build_options, "-D DESCRYPT_SALT=%u", hashes->salts_buf[0].salt_buf[0] & 0xfff);
     }
   }
 
@@ -199,7 +199,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 {
   u32 *digest = (u32 *) digest_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 2;
 
@@ -314,6 +314,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

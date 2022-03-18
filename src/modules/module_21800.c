@@ -95,19 +95,12 @@ bool module_unstable_warning (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
     {
       return true;
     }
-  }
 
-  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
-  {
-    return true;
-  }
-
-  // amdgpu-pro-20.50-1234664-ubuntu-20.04 (rocr)
-  // test_1620713931/test_report.log:! unhandled return code 255, cmdline : cat test_1620713931/21800_passwords.txt | ./hashcat --quiet --potfile-disable --runtime 400 --hwmon-disable -O -D 2 --backend-vector-width 4 -a 0 -m 21800 test_1620713931/21800_hashes.txt
-  // test_1620719578/test_report.log:! unhandled return code 255, cmdline : cat test_1620719578/21800_passwords.txt | ./hashcat --quiet --potfile-disable --runtime 400 --hwmon-disable -D 2 --backend-vector-width 4 -a 0 -m 21800 test_1620719578/21800_hashes.txt
-  if ((device_param->opencl_device_vendor_id == VENDOR_ID_AMD) && (device_param->has_vperm == true))
-  {
-    return true;
+    // AppleM1, OpenCL, MTLCompilerService never-end (pure/optimized kernel)
+    if ((device_param->opencl_device_vendor_id == VENDOR_ID_APPLE) && (device_param->opencl_device_type & CL_DEVICE_TYPE_GPU))
+    {
+      return true;
+    }
   }
 
   // amdgpu-pro-20.50-1234664-ubuntu-20.04 (legacy)
@@ -127,7 +120,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   electrum_t *esalt = (electrum_t *) esalt_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 4;
 
@@ -300,6 +293,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

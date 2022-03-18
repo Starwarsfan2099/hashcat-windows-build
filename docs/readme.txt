@@ -7,10 +7,10 @@
            |_____|     /___________/     |_____|  /_____/        /_______|
                  :                             :                         :
 
-hashcat v6.2.4
+hashcat v6.2.5
 ==============
 
-AMD GPUs on Linux require "AMD ROCm" (4.3 or later)
+AMD GPUs on Linux require "AMD ROCm" (4.5 or later)
 AMD GPUs on Windows require "AMD Radeon Adrenalin 2020 Edition" (21.2.1 or later)
 Intel CPUs require "OpenCL Runtime for Intel Core and Intel Xeon Processors" (16.1.1 or later)
 NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or later)
@@ -61,6 +61,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - GOST R 34.11-2012 (Streebog) 256-bit, big-endian
 - GOST R 34.11-2012 (Streebog) 512-bit, big-endian
 - GOST R 34.11-94
+- GPG (AES-128/AES-256 (SHA-1($pass)))
 - Half MD5
 - Keccak-224
 - Keccak-256
@@ -109,6 +110,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - sha256($salt.$pass)
 - sha256($salt.$pass.$salt)
 - sha256($salt.sha256($pass))
+- sha256($salt.sha256_bin($pass))
 - sha256($salt.utf16le($pass))
 - sha256(md5($pass))
 - sha256(sha256($pass).$salt)
@@ -135,8 +137,11 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - HMAC-Streebog-512 (key = $pass), big-endian
 - HMAC-Streebog-512 (key = $salt), big-endian
 - CRC32
+- CRC32C
+- CRC64Jones
 - Java Object hashCode()
 - MurmurHash
+- MurmurHash3
 - 3DES (PT = $salt, key = $pass)
 - DES (PT = $salt, key = $pass)
 - AES-128-ECB NOKDF (PT = $salt, key = $pass)
@@ -200,6 +205,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - NTLM
 - Radmin2
 - Samsung Android Password/PIN
+- Windows Hello PIN/Password
 - Windows Phone 8+ PIN/password
 - Cisco-ASA MD5
 - Cisco-IOS $8$ (PBKDF2-SHA256)
@@ -292,7 +298,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - PDF 1.1 - 1.3 (Acrobat 2 - 4), collider #1
 - PDF 1.1 - 1.3 (Acrobat 2 - 4), collider #2
 - PDF 1.4 - 1.6 (Acrobat 5 - 8)
-- PDF 1.4 - 1.6 (Acrobat 5 - 8) - edit password
+- PDF 1.4 - 1.6 (Acrobat 5 - 8) - user and owner pass
 - PDF 1.7 Level 3 (Acrobat 9)
 - PDF 1.7 Level 8 (Acrobat 10 - 11)
 - MS Office 2007
@@ -361,6 +367,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - vBulletin >= v3.8.5
 - bcrypt(md5($pass)) / bcryptmd5
 - bcrypt(sha1($pass)) / bcryptsha1
+- bcrypt(sha512($pass)) / bcryptsha512
 - osCommerce, xt:Commerce
 - TOTP (HMAC-SHA1)
 - Web2py pbkdf2-sha512
@@ -381,6 +388,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - RSA/DSA/EC/OpenSSH Private Keys ($4$)
 - RSA/DSA/EC/OpenSSH Private Keys ($5$)
 - XMPP SCRAM PBKDF2-SHA1
+- Teamspeak 3 (channel hash)
 - Telegram Desktop < v2.1.14 (PBKDF2-HMAC-SHA1)
 - Telegram Desktop >= v2.1.14 (PBKDF2-HMAC-SHA512)
 - Telegram Mobile App Passcode (SHA256)
@@ -401,6 +409,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - MultiBit Classic .key (MD5)
 - MultiBit Classic .wallet (scrypt)
 - MultiBit HD (scrypt)
+- Exodus Desktop Wallet (scrypt)
 
 ##
 ## Attack-Modes

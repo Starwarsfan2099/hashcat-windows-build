@@ -5,7 +5,10 @@
 ## License.....: MIT
 ##
 
-OPTS="--quiet --potfile-disable --runtime 400 --hwmon-disable"
+OPTS="--quiet --potfile-disable --hwmon-disable"
+
+FORCE=0
+RUNTIME=400
 
 TDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -148,11 +151,13 @@ mask_7[31]="?d?d?d?d?d?d?d?d0000000"
 # $1: value
 # $2: array
 # Returns 0 (SUCCESS) if the value is found, 1 otherwise
+
 function is_in_array()
 {
   for e in "${@:2}"; do
     [ "$e" = "$1" ] && return 0
   done
+
   return 1
 }
 
@@ -178,6 +183,11 @@ function init()
   fi
 
   if [ "${hash_type}" -eq ${LUKS_MODE} ]; then
+    which 7z &>/dev/null
+    if [ $? -eq 1 ]; then
+      echo "ATTENTION: 7z is missing. Skipping download and extract luks test files."
+      return 0
+    fi
 
     luks_tests_folder="${TDIR}/luks_tests/"
 
@@ -209,16 +219,17 @@ function init()
       echo ""
 
       # download:
+      wget -q "${luks_tests_url}"
 
-      if ! wget -q "${luks_tests_url}" >/dev/null 2>/dev/null; then
+      if [ $? -ne 0 ] || [ ! -f "${luks_tests}" ]; then
         cd - >/dev/null
         echo "ERROR: Could not fetch the luks test files from this url: ${luks_tests_url}"
-        exit 1
+        return 0
       fi
 
       # extract:
 
-      ${EXTRACT_CMD} "${luks_tests}" >/dev/null 2>/dev/null
+      ${EXTRACT_CMD} "${luks_tests}" &>/dev/null
 
       # cleanup:
 
@@ -229,7 +240,7 @@ function init()
 
       if [ ! -f "${luks_first_test_file}" ]; then
         echo "ERROR: downloading and extracting ${luks_tests} into ${luks_tests_folder} did not complete successfully"
-        exit 1
+        return 0
       fi
     fi
 
@@ -294,17 +305,14 @@ function init()
       # special case (passwords longer than expected)
       pass_len=${#pass}
 
-      if [ "${pass_len}" -gt 1 ]
-      then
+      if [ "${pass_len}" -gt 1 ]; then
 
         p1=$((p1 + min_offset))
         p0=$((p0 + min_offset))
 
         if [ "${p1}" -gt "${pass_len}" ]; then
-
           p1=${pass_len}
           p0=$((p1 - 1))
-
         fi
 
         # add splitted password to dicts
@@ -346,6 +354,7 @@ function init()
   if [ "${MODE}" -ge 1 ]; then
 
     i=2
+
     while [ "$i" -lt 9 ]; do
 
       cmd_file=${OUTD}/${hash_type}_multi_${i}.txt
@@ -378,6 +387,7 @@ function init()
         echo "${pass}" | cut -c ${p1}- >> "${OUTD}/${hash_type}_dict2_multi_${i}"
 
       done 9< "${OUTD}/${hash_type}_passwords_multi_${i}.txt"
+
       i=$((i + 1))
 
     done
@@ -393,20 +403,62 @@ function status()
 
   if [ "${RET}" -ne 0 ]; then
     case ${RET} in
+      246)
+        echo "autotune failure, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      248)
+        echo "skipped by runtime (mixed backend errors detected), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      249)
+        echo "skipped by runtime (Invalid module_extra_buffer_size), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      250)
+        echo "skipped by runtime (Too many compute units to keep minimum kernel accel limit), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      251)
+        echo "skipped by runtime (main kernel build error), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      252)
+        echo "skipped by runtime (memory hit limit), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
+      253)
+        echo "skipped by runtime (module_unstable_warning), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
       1)
         if ! is_in_array "${hash_type}" ${NEVER_CRACK_ALGOS}; then
-
            echo "password not found, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
            e_nf=$((e_nf + 1))
-
         fi
 
         ;;
+
       4)
         echo "timeout reached, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
-        e_to=$((e_to + 1))
 
+        e_to=$((e_to + 1))
         ;;
+
       10)
         if is_in_array "${hash_type}" ${NEVER_CRACK_ALGOS}; then
           return
@@ -417,14 +469,30 @@ function status()
         else
           echo "hash:plains not matched in output, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.tx"t
         fi
-        e_nm=$((e_nm + 1))
 
+        e_nm=$((e_nm + 1))
         ;;
+
+      20)
+        echo "grep out-of-memory (cannot check if plains match in output), cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_ce=$((e_ce + 1))
+        e_nm=$((e_nm + 1))
+        ;;
+
+      30)
+        echo "luks test files are missing, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        e_rs=$((e_rs + 1))
+        ;;
+
       *)
         echo "! unhandled return code ${RET}, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
-        echo "! unhandled return code, see ${OUTD}/logfull.txt for details."
+        echo "! unhandled return code, see ${OUTD}/logfull.txt or ${OUTD}/test_report.log for details."
+
         e_nf=$((e_nf + 1))
         ;;
+
     esac
   fi
 }
@@ -434,27 +502,25 @@ function attack_0()
   file_only=0
 
   if is_in_array "${hash_type}" ${FILE_BASED_ALGOS}; then
-
     file_only=1
-
   fi
 
   # single hash
   if [ "${MODE}" -ne 1 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
     cnt=0
 
-    echo "> Testing hash type $hash_type with attack mode 0, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 0, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     max=32
 
     if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
       max=12
-
     fi
 
     i=0
@@ -462,18 +528,14 @@ function attack_0()
     while read -r -u 9 line; do
 
       if [ "${i}" -ge ${max} ]; then
-
         break
-
       fi
 
       hash="$(echo "${line}" | cut -d\'  -f2)"
       pass="$(echo "${line}" | cut -d' ' -f2)"
 
       if [ -z "${hash}" ]; then
-
         break
-
       fi
 
       if [ "${file_only}" -eq 1 ]; then
@@ -516,12 +578,33 @@ function attack_0()
           search="${hash}:${pass}"
         fi
 
-        echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+        echo "${output}" | grep -F "${search}" &>/dev/null
 
-        if [ "${?}" -ne 0 ]; then
+        newRet=$?
 
+        if [ "${newRet}" -eq 2 ]; then
+
+          # out-of-memory, workaround
+
+          echo "${output}" | head -1 > tmp_file_out
+          echo "${search}" > tmp_file_search
+
+          out_md5=$(md5sum tmp_file_out | cut -d' ' -f1)
+          search_md5=$(md5sum tmp_file_search | cut -d' ' -f1)
+
+          rm tmp_file_out tmp_file_search
+
+          if [ "${out_md5}" == "${search_md5}" ]; then
+            newRet=0
+          fi
+        fi
+
+        if [ "${newRet}" -ne 0 ]; then
+          if [ "${newRet}" -eq 2 ]; then
+            ret=20
+          else
             ret=10
-
+          fi
         fi
 
       fi
@@ -534,29 +617,30 @@ function attack_0()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 
   # multihash
   if [ "${MODE}" -ne 0 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
     cnt=0
 
-    echo "> Testing hash type $hash_type with attack mode 0, markov ${MARKOV}, multi hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 0, markov ${MARKOV}, multi hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     hash_file=${OUTD}/${hash_type}_hashes.txt
 
@@ -603,14 +687,18 @@ function attack_0()
           search="${hash}:${pass}"
         fi
 
-        echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+        echo "${output}" | grep -F "${search}" &>/dev/null
 
-        if [ "${?}" -ne 0 ]; then
+        newRet=$?
 
-          ret=10
+        if [ "${newRet}" -ne 0 ]; then
+          if [ "${newRet}" -eq 2 ]; then
+            ret=20
+          else
+            ret=10
+          fi
 
           break
-
         fi
 
         i=$((i + 1))
@@ -623,18 +711,17 @@ function attack_0()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode multi,  Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode multi,  Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -643,14 +730,14 @@ function attack_1()
   file_only=0
 
   if is_in_array "${hash_type}" ${FILE_BASED_ALGOS}; then
-
     file_only=1
-
   fi
 
   # single hash
   if [ "${MODE}" -ne 1 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
@@ -671,9 +758,11 @@ function attack_1()
     elif [ "${hash_type}" -eq 15400 ]; then
       min=0
       max=5
+    elif [ "${hash_type}" -eq 20510 ]; then
+      min=2
     fi
 
-    echo "> Testing hash type $hash_type with attack mode 1, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 1, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
     i=1
     while read -r -u 9 hash; do
 
@@ -736,7 +825,6 @@ function attack_1()
           # finally, modify the dicts accordingly:
 
           tmp_file="${dict1}_mod"
-
           head -n $((line_nr - 1)) "${dict1}" > "${tmp_file}"
           echo "${line_dict1}" >> "${tmp_file}"
           tail -n $((line_num - line_nr - 1)) "${dict1}" >> "${tmp_file}"
@@ -773,12 +861,33 @@ function attack_1()
             search="${hash}:${line_dict1}${line_dict2}"
           fi
 
-          echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+          echo "${output}" | grep -F "${search}" &>/dev/null
 
-          if [ "${?}" -ne 0 ]; then
+          newRet=$?
 
-            ret=10
+          if [ "${newRet}" -eq 2 ]; then
 
+            # out-of-memory, workaround
+
+            echo "${output}" | head -1 > tmp_file_out
+            echo "${search}" > tmp_file_search
+
+            out_md5=$(md5sum tmp_file_out | cut -d' ' -f1)
+            search_md5=$(md5sum tmp_file_search | cut -d' ' -f1)
+
+            rm tmp_file_out tmp_file_search
+
+            if [ "${out_md5}" == "${search_md5}" ]; then
+              newRet=0
+            fi
+          fi
+
+          if [ "${newRet}" -ne 0 ]; then
+            if [ "${newRet}" -eq 2 ]; then
+              ret=20
+            else
+              ret=10
+            fi
           fi
 
         fi
@@ -795,18 +904,17 @@ function attack_1()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 1, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 1, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 
   # multihash
@@ -824,6 +932,8 @@ function attack_1()
       return
     fi
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
@@ -864,7 +974,7 @@ function attack_1()
 
     CMD="./${BIN} ${OPTS} -a 1 -m ${hash_type} ${hash_file} ${OUTD}/${hash_type}_dict1 ${OUTD}/${hash_type}_dict2"
 
-    echo "> Testing hash type $hash_type with attack mode 1, markov ${MARKOV}, multi hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 1, markov ${MARKOV}, multi hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     output=$(./${BIN} ${OPTS} -a 1 -m ${hash_type} ${hash_file} ${OUTD}/${hash_type}_dict1 ${OUTD}/${hash_type}_dict2 2>&1)
 
@@ -893,38 +1003,40 @@ function attack_1()
           search="${hash}:${line_dict1}${line_dict2}"
         fi
 
-        echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+        echo "${output}" | grep -F "${search}" &>/dev/null
 
-        if [ "${?}" -ne 0 ]; then
+        newRet=$?
 
-          ret=10
+        if [ "${newRet}" -ne 0 ]; then
+          if [ "${newRet}" -eq 2 ]; then
+            ret=20
+          else
+            ret=10
+          fi
 
           break
-
         fi
 
         i=$((i + 1))
 
       done 9< "${OUTD}/${hash_type}_multihash_combi.txt"
-
     fi
 
     status ${ret}
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 1, Mode multi,  Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 1, Mode multi,  Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -933,20 +1045,20 @@ function attack_3()
   file_only=0
 
   if is_in_array "${hash_type}" ${FILE_BASED_ALGOS}; then
-
     file_only=1
-
   fi
 
   # single hash
   if [ "${MODE}" -ne 1 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
     cnt=0
 
-    echo "> Testing hash type $hash_type with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     max=8
 
@@ -973,13 +1085,9 @@ function attack_3()
     while read -r -u 9 hash; do
 
       if [ "${i}" -gt 6 ]; then
-
         if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
           break
-
         fi
-
       fi
 
       if [ "${file_only}" -eq 1 ]; then
@@ -993,9 +1101,7 @@ function attack_3()
         fi
 
         hash="${temp_file}"
-
       fi
-
 
       # construct a meaningful mask from the password itself:
 
@@ -1015,21 +1121,15 @@ function attack_3()
       mask=""
 
       if   [ "${hash_type}" -eq 14000 ]; then
-
         mask="${pass}"
-
       elif [ "${hash_type}" -eq 14100 ]; then
-
         mask="${pass}"
-
       else
-
         for i in $(seq 1 ${i}); do
           mask="${mask}?d"
         done
 
         mask="${mask}${pass_part_2}"
-
       fi
 
       if [ "${hash_type}" -eq 20510 ]; then # special case for PKZIP Master Key
@@ -1067,12 +1167,33 @@ function attack_3()
           search="${hash}:${line_dict}"
         fi
 
-        echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+        echo "${output}" | grep -F "${search}" &>/dev/null
 
-        if [ "${?}" -ne 0 ]; then
+        newRet=$?
 
-          ret=10
+        if [ "${newRet}" -eq 2 ]; then
 
+          # out-of-memory, workaround
+
+          echo "${output}" | head -1 > tmp_file_out
+          echo "${search}" > tmp_file_search
+
+          out_md5=$(md5sum tmp_file_out | cut -d' ' -f1)
+          search_md5=$(md5sum tmp_file_search | cut -d' ' -f1)
+
+          rm tmp_file_out tmp_file_search
+
+          if [ "${out_md5}" == "${search_md5}" ]; then
+            newRet=0
+          fi
+        fi
+
+        if [ "${newRet}" -ne 0 ]; then
+          if [ "${newRet}" -eq 2 ]; then
+            ret=20
+          else
+            ret=10
+          fi
         fi
 
       fi
@@ -1087,18 +1208,17 @@ function attack_3()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 
   # multihash
@@ -1116,6 +1236,8 @@ function attack_3()
       return
     fi
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
@@ -1124,9 +1246,7 @@ function attack_3()
     increment_max=8
 
     if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
       increment_max=5
-
     fi
 
     increment_min=1
@@ -1273,27 +1393,19 @@ function attack_3()
       # just make sure that all custom charset fields are initialized
 
       if [ -z "${charset_1}" ]; then
-
         charset_1="1"
-
       fi
 
       if [ -z "${charset_2}" ]; then
-
         charset_2="2"
-
       fi
 
       if [ -z "${charset_3}" ]; then
-
         charset_3="3"
-
       fi
 
       if [ -z "${charset_4}" ]; then
-
         charset_4="4"
-
       fi
 
       # unique and remove new lines
@@ -1358,27 +1470,19 @@ function attack_3()
       # just make sure that all custom charset fields are initialized
 
       if [ -z "${charset_1}" ]; then
-
         charset_1="1"
-
       fi
 
       if [ -z "${charset_2}" ]; then
-
         charset_2="2"
-
       fi
 
       if [ -z "${charset_3}" ]; then
-
         charset_3="3"
-
       fi
 
       if [ -z "${charset_4}" ]; then
-
         charset_4="4"
-
       fi
 
       # unique and remove new lines
@@ -1443,27 +1547,19 @@ function attack_3()
       # just make sure that all custom charset fields are initialized
 
       if [ -z "${charset_1}" ]; then
-
         charset_1="1"
-
       fi
 
       if [ -z "${charset_2}" ]; then
-
         charset_2="2"
-
       fi
 
       if [ -z "${charset_3}" ]; then
-
         charset_3="3"
-
       fi
 
       if [ -z "${charset_4}" ]; then
-
         charset_4="4"
-
       fi
 
       # unique and remove new lines
@@ -1488,7 +1584,7 @@ function attack_3()
 
     CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} ${increment_charset_opts} ${hash_file} ${mask} "
 
-    echo "> Testing hash type $hash_type with attack mode 3, markov ${MARKOV}, multi hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt"  2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 3, markov ${MARKOV}, multi hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt"  2>> "${OUTD}/logfull.txt"
 
     output=$(./${BIN} ${OPTS} -a 3 -m ${hash_type} ${increment_charset_opts} ${hash_file} ${mask} 2>&1)
 
@@ -1511,14 +1607,18 @@ function attack_3()
           search="${hash}:${pass}"
         fi
 
-        echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+        echo "${output}" | grep -F "${search}" &>/dev/null
 
-        if [ "${?}" -ne 0 ]; then
+        newRet=$?
 
-          ret=10
+        if [ "${newRet}" -ne 0 ]; then
+          if [ "${newRet}" -eq 2 ]; then
+            ret=20
+          else
+            ret=10
+          fi
 
           break
-
         fi
 
         i=$((i + 1))
@@ -1531,18 +1631,17 @@ function attack_3()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode multi,  Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode multi,  Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -1551,20 +1650,20 @@ function attack_6()
   file_only=0
 
   if is_in_array "${hash_type}" ${FILE_BASED_ALGOS}; then
-
     file_only=1
-
   fi
 
   # single hash
   if [ "${MODE}" -ne 1 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
     cnt=0
 
-    echo "> Testing hash type $hash_type with attack mode 6, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 6, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     min=1
     max=8
@@ -1597,7 +1696,6 @@ function attack_6()
     # special case: we need to split the first line
 
     if [ "${min}" -eq 0 ]; then
-
       pass_part_1=$(sed -n 1p "${OUTD}/${hash_type}_dict1")
       pass_part_2=$(sed -n 1p "${OUTD}/${hash_type}_dict2")
 
@@ -1611,38 +1709,26 @@ function attack_6()
       for i in $(seq 1 $((${#pass} - mask_offset))); do
 
         if   [ "${hash_type}" -eq 14000 ]; then
-
           char=$(echo -n "${pass}" | cut -b $((i + mask_offset)))
           mask_custom="${mask_custom}${char}"
-
         elif [ "${hash_type}" -eq 14100 ]; then
-
           char=$(echo -n "${pass}" | cut -b $((i + mask_offset)))
           mask_custom="${mask_custom}${char}"
-
         else
-
           mask_custom="${mask_custom}?d"
-
         fi
 
       done
-
     fi
-
 
     i=1
 
     while read -r -u 9 hash; do
 
       if [ "${i}" -gt 6 ]; then
-
         if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
           break
-
         fi
-
       fi
 
       if [ ${i} -gt ${min} ]; then
@@ -1711,7 +1797,6 @@ function attack_6()
 
         # end of shuf/sort -R
 
-
         mask=""
 
         for j in $(seq 1 ${i}); do
@@ -1745,18 +1830,37 @@ function attack_6()
             search="${hash}:${line_dict1}${line_dict2}"
           fi
 
-          echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+          echo "${output}" | grep -F "${search}" &>/dev/null
 
-          if [ "${?}" -ne 0 ]; then
+          newRet=$?
 
-            ret=10
+          if [ "${newRet}" -eq 2 ]; then
+            # out-of-memory, workaround
 
+            echo "${output}" | head -1 > tmp_file_out
+            echo "${search}" > tmp_file_search
+
+            out_md5=$(md5sum tmp_file_out | cut -d' ' -f1)
+            search_md5=$(md5sum tmp_file_search | cut -d' ' -f1)
+
+            rm tmp_file_out tmp_file_search
+
+            if [ "${out_md5}" == "${search_md5}" ]; then
+              newRet=0
+            fi
+          fi
+
+          if [ "${newRet}" -ne 0 ]; then
+            if [ "${newRet}" -eq 2 ]; then
+              ret=20
+            else
+              ret=10
+            fi
           fi
 
         fi
 
         status ${ret}
-
       fi
 
       if [ "${i}" -eq ${max} ]; then break; fi
@@ -1767,21 +1871,20 @@ function attack_6()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 6, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 6, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
 
     rm -f "${OUTD}/${hash_type}_dict1_custom"
     rm -f "${OUTD}/${hash_type}_dict2_custom"
-
   fi
 
   # multihash
@@ -1799,6 +1902,8 @@ function attack_6()
       return
     fi
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
@@ -1821,15 +1926,10 @@ function attack_6()
     fi
 
     if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
       max=5
-
       if [ "${hash_type}" -eq 3200 ]; then
-
         max=3
-
       fi
-
     fi
 
     i=2
@@ -1885,20 +1985,23 @@ function attack_6()
             search="${hash}:${line_dict1}${line_dict2}"
           fi
 
-          echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+          echo "${output}" | grep -F "${search}" &>/dev/null
 
-          if [ "${?}" -ne 0 ]; then
+          newRet=$?
 
-            ret=10
+          if [ "${newRet}" -ne 0 ]; then
+            if [ "${newRet}" -eq 2 ]; then
+              ret=20
+            else
+              ret=10
+            fi
 
             break
-
           fi
 
           j=$((j + 1))
 
         done 9< "${OUTD}/${hash_type}_hashes_multi_${i}.txt"
-
       fi
 
       status ${ret}
@@ -1908,18 +2011,17 @@ function attack_6()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 6, Mode multi,  Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 6, Mode multi,  Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -1928,20 +2030,20 @@ function attack_7()
   file_only=0
 
   if is_in_array "${hash_type}" ${FILE_BASED_ALGOS}; then
-
     file_only=1
-
   fi
 
   # single hash
   if [ "${MODE}" -ne 1 ]; then
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
     cnt=0
 
-    echo "> Testing hash type $hash_type with attack mode 7, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hash_type with attack mode 7, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}." >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     min=1
     max=8
@@ -1989,19 +2091,13 @@ function attack_7()
       for i in $(seq 1 ${mask_offset}); do
 
         if   [ "${hash_type}" -eq 14000 ]; then
-
           char=$(echo -n "${pass}" | cut -b ${i})
           mask_custom="${mask_custom}${char}"
-
         elif [ "${hash_type}" -eq 14100 ]; then
-
           char=$(echo -n "${pass}" | cut -b ${i})
           mask_custom="${mask_custom}${char}"
-
         else
-
           mask_custom="${mask_custom}?d"
-
         fi
 
       done
@@ -2164,18 +2260,39 @@ function attack_7()
             search="${hash}:${line_dict1}${line_dict2}"
           fi
 
-          echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+          echo "${output}" | grep -F "${search}" &>/dev/null
 
-          if [ "${?}" -ne 0 ]; then
+          newRet=$?
 
-            ret=10
+          if [ "${newRet}" -eq 2 ]; then
 
+            # out-of-memory, workaround
+
+            echo "${output}" | head -1 > tmp_file_out
+            echo "${search}" > tmp_file_search
+
+            out_md5=$(md5sum tmp_file_out | cut -d' ' -f1)
+            search_md5=$(md5sum tmp_file_search | cut -d' ' -f1)
+
+            rm tmp_file_out tmp_file_search
+
+            if [ "${out_md5}" == "${search_md5}" ]; then
+              newRet=0
+            fi
+          fi
+
+          if [ "${newRet}" -ne 0 ]; then
+
+            if [ "${newRet}" -eq 2 ]; then
+              ret=20
+            else
+              ret=10
+            fi
           fi
 
         fi
 
         status ${ret}
-
       fi
 
       if [ $i -eq ${max} ]; then break; fi
@@ -2186,21 +2303,20 @@ function attack_7()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 7, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 7, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
 
     rm -f "${OUTD}/${hash_type}_dict1_custom"
     rm -f "${OUTD}/${hash_type}_dict2_custom"
-
   fi
 
   # multihash
@@ -2218,6 +2334,8 @@ function attack_7()
       return
     fi
 
+    e_ce=0
+    e_rs=0
     e_to=0
     e_nf=0
     e_nm=0
@@ -2248,15 +2366,10 @@ function attack_7()
     fi
 
     if is_in_array "${hash_type}" ${TIMEOUT_ALGOS}; then
-
       max=7
-
       if [ "${hash_type}" -eq 3200 ]; then
-
         max=4
-
       fi
-
     fi
 
     i=2
@@ -2339,20 +2452,23 @@ function attack_7()
             search="${hash}:${line_dict1}${line_dict2}"
           fi
 
-          echo "${output}" | grep -F "${search}" >/dev/null 2>/dev/null
+          echo "${output}" | grep -F "${search}" &>/dev/null
 
-          if [ "${?}" -ne 0 ]; then
+          newRet=$?
 
-            ret=10
+          if [ "${newRet}" -ne 0 ]; then
+            if [ "${newRet}" -eq 2 ]; then
+              ret=20
+            else
+              ret=10
+            fi
 
             break
-
           fi
 
           j=$((j + 1))
 
         done 9< "${OUTD}/${hash_type}_hashes_multi_${i}.txt"
-
       fi
 
       status ${ret}
@@ -2362,18 +2478,17 @@ function attack_7()
 
     msg="OK"
 
-    if [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
-
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
       msg="Error"
-
     elif [ "${e_to}" -ne 0 ]; then
-
       msg="Warning"
-
     fi
 
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 7, Mode multi,  Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout"
-
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 7, Mode multi,  Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -2384,14 +2499,14 @@ function cryptoloop_test()
   CMD="unset"
 
   mkdir -p ${OUTD}/cl_tests
-  chmod u+x ${TDIR}/cryptoloop2hashcat.py
+  chmod u+x "${TDIR}/cryptoloop2hashcat.py"
 
   case $hashType in
 
     14511)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha1_aes_${keySize}.img --hash sha1 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_aes_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha1_aes_${keySize}.img\" --hash sha1 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_aes_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha1_aes_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2400,7 +2515,7 @@ function cryptoloop_test()
     14512)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha1_serpent_${keySize}.img --hash sha1 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_serpent_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha1_serpent_${keySize}.img\" --hash sha1 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_serpent_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha1_serpent_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2409,7 +2524,7 @@ function cryptoloop_test()
     14513)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha1_twofish_${keySize}.img --hash sha1 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_twofish_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha1_twofish_${keySize}.img\" --hash sha1 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha1_twofish_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha1_twofish_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2418,7 +2533,7 @@ function cryptoloop_test()
     14521)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha256_aes_${keySize}.img --hash sha256 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_aes_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha256_aes_${keySize}.img\" --hash sha256 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_aes_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha256_aes_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2427,7 +2542,7 @@ function cryptoloop_test()
     14522)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha256_serpent_${keySize}.img --hash sha256 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_serpent_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha256_serpent_${keySize}.img\" --hash sha256 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_serpent_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha256_serpent_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2436,7 +2551,7 @@ function cryptoloop_test()
     14523)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha256_twofish_${keySize}.img --hash sha256 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_twofish_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha256_twofish_${keySize}.img\" --hash sha256 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha256_twofish_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha256_twofish_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2445,7 +2560,7 @@ function cryptoloop_test()
     14531)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha512_aes_${keySize}.img --hash sha512 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_aes_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha512_aes_${keySize}.img\" --hash sha512 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_aes_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha512_aes_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2454,7 +2569,7 @@ function cryptoloop_test()
     14532)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha512_serpent_${keySize}.img --hash sha512 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_serpent_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha512_serpent_${keySize}.img\" --hash sha512 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_serpent_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha512_serpent_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2463,7 +2578,7 @@ function cryptoloop_test()
     14533)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_sha512_twofish_${keySize}.img --hash sha512 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_twofish_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_sha512_twofish_${keySize}.img\" --hash sha512 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_sha512_twofish_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_sha512_twofish_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2472,7 +2587,7 @@ function cryptoloop_test()
     14541)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_ripemd160_aes_${keySize}.img --hash ripemd160 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_aes_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_ripemd160_aes_${keySize}.img\" --hash ripemd160 --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_aes_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_ripemd160_aes_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2481,7 +2596,7 @@ function cryptoloop_test()
     14542)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_ripemd160_serpent_${keySize}.img --hash ripemd160 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_serpent_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_ripemd160_serpent_${keySize}.img\" --hash ripemd160 --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_serpent_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_ripemd160_serpent_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2490,7 +2605,7 @@ function cryptoloop_test()
     14543)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_ripemd160_twofish_${keySize}.img --hash ripemd160 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_twofish_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_ripemd160_twofish_${keySize}.img\" --hash ripemd160 --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_ripemd160_twofish_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_ripemd160_twofish_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2499,7 +2614,7 @@ function cryptoloop_test()
     14551)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_whirlpool_aes_${keySize}.img --hash whirlpool --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_aes_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_whirlpool_aes_${keySize}.img\" --hash whirlpool --cipher aes --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_aes_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_whirlpool_aes_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2508,7 +2623,7 @@ function cryptoloop_test()
     14552)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_whirlpool_serpent_${keySize}.img --hash whirlpool --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_serpent_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py\" --source \"${TDIR}/cl_tests/hashcat_whirlpool_serpent_${keySize}.img\" --hash whirlpool --cipher serpent --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_serpent_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_whirlpool_serpent_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2517,7 +2632,7 @@ function cryptoloop_test()
     14553)
       case $keySize in
         128|192|256)
-          ${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_whirlpool_twofish_${keySize}.img --hash whirlpool --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_twofish_${keySize}.hash
+          eval \"${TDIR}/cryptoloop2hashcat.py --source ${TDIR}/cl_tests/hashcat_whirlpool_twofish_${keySize}.img\" --hash whirlpool --cipher twofish --keysize ${keySize} > ${OUTD}/cl_tests/hashcat_whirlpool_twofish_${keySize}.hash
           CMD="./${BIN} ${OPTS} -a 3 -m 14500 ${OUTD}/cl_tests/hashcat_whirlpool_twofish_${keySize}.hash hashca?l"
           ;;
       esac
@@ -2525,7 +2640,7 @@ function cryptoloop_test()
   esac
 
   if [ ${#CMD} -gt 5 ]; then
-    echo "> Testing hash type $hashType with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Key-Size ${keySize}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hashType with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Key-Size ${keySize}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
     output=$(${CMD} 2>&1)
 
@@ -2533,18 +2648,30 @@ function cryptoloop_test()
 
     echo "${output}" >> "${OUTD}/logfull.txt"
 
-    cnt=1
+    e_ce=0
+    e_rs=0
+    e_to=0
     e_nf=0
-    msg="OK"
-
-    if [ ${ret} -ne 0 ]; then
-      e_nf=1
-      msg="Error"
-    fi
-
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Key-Size ${keySize} ] > $msg : ${e_nf}/${cnt} not found"
+    e_nm=0
+    cnt=0
 
     status ${ret}
+
+    cnt=1
+
+    msg="OK"
+
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
+      msg="Error"
+    elif [ "${e_to}" -ne 0 ]; then
+      msg="Warning"
+    fi
+
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Key-Size ${keySize} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -2559,13 +2686,13 @@ function truecrypt_test()
     6211)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6211 ${TDIR}/tc_tests/hashcat_ripemd160_aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6211 '${TDIR}/tc_tests/hashcat_ripemd160_aes.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6211 ${TDIR}/tc_tests/hashcat_ripemd160_serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6211 '${TDIR}/tc_tests/hashcat_ripemd160_serpent.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6211 ${TDIR}/tc_tests/hashcat_ripemd160_twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6211 '${TDIR}/tc_tests/hashcat_ripemd160_twofish.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2573,13 +2700,13 @@ function truecrypt_test()
     6212)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6212 ${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6212 '${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6212 ${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6212 '${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6212 ${TDIR}/tc_tests/hashcat_ripemd160_twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6212 '${TDIR}/tc_tests/hashcat_ripemd160_twofish-serpent.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2587,10 +2714,10 @@ function truecrypt_test()
     6213)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6213 ${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6213 '${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6213 ${TDIR}/tc_tests/hashcat_ripemd160_serpent-twofish-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6213 '${TDIR}/tc_tests/hashcat_ripemd160_serpent-twofish-aes.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2598,13 +2725,13 @@ function truecrypt_test()
     6221)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6221 ${TDIR}/tc_tests/hashcat_sha512_aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6221 '${TDIR}/tc_tests/hashcat_sha512_aes.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6221 ${TDIR}/tc_tests/hashcat_sha512_serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6221 '${TDIR}/tc_tests/hashcat_sha512_serpent.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6221 ${TDIR}/tc_tests/hashcat_sha512_twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6221 '${TDIR}/tc_tests/hashcat_sha512_twofish.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2612,13 +2739,13 @@ function truecrypt_test()
     6222)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6222 ${TDIR}/tc_tests/hashcat_sha512_aes-twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6222 '${TDIR}/tc_tests/hashcat_sha512_aes-twofish.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6222 ${TDIR}/tc_tests/hashcat_sha512_serpent-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6222 '${TDIR}/tc_tests/hashcat_sha512_serpent-aes.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6222 ${TDIR}/tc_tests/hashcat_sha512_twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6222 '${TDIR}/tc_tests/hashcat_sha512_twofish-serpent.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2626,10 +2753,10 @@ function truecrypt_test()
     6223)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6223 ${TDIR}/tc_tests/hashcat_sha512_aes-twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6223 '${TDIR}/tc_tests/hashcat_sha512_aes-twofish-serpent.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6223 ${TDIR}/tc_tests/hashcat_sha512_serpent-twofish-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6223 '${TDIR}/tc_tests/hashcat_sha512_serpent-twofish-aes.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2637,13 +2764,13 @@ function truecrypt_test()
     6231)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6231 ${TDIR}/tc_tests/hashcat_whirlpool_aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6231 '${TDIR}/tc_tests/hashcat_whirlpool_aes.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6231 ${TDIR}/tc_tests/hashcat_whirlpool_serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6231 '${TDIR}/tc_tests/hashcat_whirlpool_serpent.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6231 ${TDIR}/tc_tests/hashcat_whirlpool_twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6231 '${TDIR}/tc_tests/hashcat_whirlpool_twofish.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2651,13 +2778,13 @@ function truecrypt_test()
     6232)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6232 ${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6232 '${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6232 ${TDIR}/tc_tests/hashcat_whirlpool_serpent-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6232 '${TDIR}/tc_tests/hashcat_whirlpool_serpent-aes.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6232 ${TDIR}/tc_tests/hashcat_whirlpool_twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6232 '${TDIR}/tc_tests/hashcat_whirlpool_twofish-serpent.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2665,10 +2792,10 @@ function truecrypt_test()
     6233)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6233 ${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish-serpent.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6233 '${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish-serpent.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6233 ${TDIR}/tc_tests/hashcat_whirlpool_serpent-twofish-aes.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6233 '${TDIR}/tc_tests/hashcat_whirlpool_serpent-twofish-aes.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2676,13 +2803,13 @@ function truecrypt_test()
     6241)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6241 ${TDIR}/tc_tests/hashcat_ripemd160_aes_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6241 '${TDIR}/tc_tests/hashcat_ripemd160_aes_boot.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6241 ${TDIR}/tc_tests/hashcat_ripemd160_serpent_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6241 '${TDIR}/tc_tests/hashcat_ripemd160_serpent_boot.tc' hashca?l"
           ;;
         2)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6241 ${TDIR}/tc_tests/hashcat_ripemd160_twofish_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6241 '${TDIR}/tc_tests/hashcat_ripemd160_twofish_boot.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2690,10 +2817,10 @@ function truecrypt_test()
     6242)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6242 ${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6242 '${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish_boot.tc' hashca?l"
           ;;
         1)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6242 ${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6242 '${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes_boot.tc' hashca?l"
           ;;
       esac
       ;;
@@ -2701,33 +2828,45 @@ function truecrypt_test()
     6243)
       case $tcMode in
         0)
-          CMD="./${BIN} ${OPTS} -a 3 -m 6243 ${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent_boot.tc hashca?l"
+          CMD="./${BIN} ${OPTS} -a 3 -m 6243 '${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent_boot.tc' hashca?l"
           ;;
       esac
       ;;
   esac
 
   if [ ${#CMD} -gt 5 ]; then
-    echo "> Testing hash type $hashType with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, tcMode ${tcMode}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+    echo "> Testing hash type $hashType with attack mode 3, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, tcMode ${tcMode}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
-    output=$(${CMD} 2>&1)
+    output=$(eval ${CMD} 2>&1)
 
     ret=${?}
 
     echo "${output}" >> "${OUTD}/logfull.txt"
 
-    cnt=1
+    e_ce=0
+    e_rs=0
+    e_to=0
     e_nf=0
-    msg="OK"
-
-    if [ ${ret} -ne 0 ]; then
-      e_nf=1
-      msg="Error"
-    fi
-
-    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, tcMode ${tcMode} ] > $msg : ${e_nf}/${cnt} not found"
+    e_nm=0
+    cnt=0
 
     status ${ret}
+
+    cnt=1
+
+    msg="OK"
+
+    if [ "${e_ce}" -ne 0 ]; then
+      msg="Compare Error"
+    elif [ "${e_rs}" -ne 0 ]; then
+      msg="Skip"
+    elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
+      msg="Error"
+    elif [ "${e_to}" -ne 0 ]; then
+      msg="Warning"
+    fi
+
+    echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 3, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, tcMode ${tcMode} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
   fi
 }
 
@@ -2783,28 +2922,40 @@ function veracrypt_test()
   # The hash-cipher combination might be invalid (e.g. RIPEMD-160 + Kuznyechik)
   [ -f "${filename}" ] || return
 
-  CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} ${filename} hashc?lt"
+  CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} '${filename}' hashc?lt"
 
-  echo "> Testing hash type ${hash_type} with attack mode 0, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Cipher ${cipher_cascade}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+  echo "> Testing hash type ${hash_type} with attack mode 0, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Cipher ${cipher_cascade}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
-  output=$(${CMD} 2>&1)
+  output=$(eval ${CMD} 2>&1)
 
   ret=${?}
 
   echo "${output}" >> "${OUTD}/logfull.txt"
 
-  cnt=1
+  e_ce=0
+  e_rs=0
+  e_to=0
   e_nf=0
-  msg="OK"
-
-  if [ ${ret} -ne 0 ]; then
-    e_nf=1
-    msg="Error"
-  fi
-
-  echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Cipher ${cipher_cascade} ] > $msg : ${e_nf}/${cnt} not found"
+  e_nm=0
+  cnt=0
 
   status ${ret}
+
+  cnt=1
+
+  msg="OK"
+
+  if [ "${e_ce}" -ne 0 ]; then
+    msg="Compare Error"
+  elif [ "${e_rs}" -ne 0 ]; then
+    msg="Skip"
+  elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
+    msg="Error"
+  elif [ "${e_to}" -ne 0 ]; then
+    msg="Warning"
+  fi
+
+  echo "[ ${OUTD} ] [ Type ${hash_type}, Attack 0, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Cipher ${cipher_cascade} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
 }
 
 function luks_test()
@@ -2825,7 +2976,7 @@ function luks_test()
   LUKS_MODES="cbc-essiv cbc-plain64 xts-plain64"
   LUKS_KEYSIZES="128 256 512"
 
-  LUKS_PASSWORD=$(cat "${TDIR}/luks_tests/pw")
+  LUKS_PASSWORD=$(cat "${TDIR}/luks_tests/pw" 2>/dev/null)
 
   for luks_h in ${LUKS_HASHES}; do
     for luks_c in ${LUKS_CIPHERS}; do
@@ -2877,57 +3028,75 @@ function luks_test()
 
           case $attackType in
             0)
-              CMD="./${BIN} ${OPTS} -a 0 -m ${hashType} ${luks_file} ${TDIR}/luks_tests/pw"
+              CMD="./${BIN} ${OPTS} -a 0 -m ${hashType} '${luks_file}' '${TDIR}/luks_tests/pw'"
               ;;
             1)
               luks_pass_part1_len=$((${#LUKS_PASSWORD} / 2))
               luks_pass_part2_start=$((luks_pass_part1_len + 1))
 
-              echo "${LUKS_PASSWORD}" | cut -c-${luks_pass_part1_len} > "${luks_pass_part_file1}"
-              echo "${LUKS_PASSWORD}" | cut -c${luks_pass_part2_start}- > "${luks_pass_part_file2}"
+              echo "${LUKS_PASSWORD}" | cut -c-${luks_pass_part1_len} > "${luks_pass_part_file1}" 2>/dev/null
+              echo "${LUKS_PASSWORD}" | cut -c${luks_pass_part2_start}- > "${luks_pass_part_file2}" 2>/dev/null
 
-              CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} ${luks_file} ${luks_pass_part_file1} ${luks_pass_part_file2}"
+              CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} '${luks_file}' ${luks_pass_part_file1} ${luks_pass_part_file2}"
               ;;
             3)
               luks_mask_fixed_len=$((${#LUKS_PASSWORD} - 1))
 
-              luks_mask="$(echo "${LUKS_PASSWORD}" | cut -c-${luks_mask_fixed_len})"
+              luks_mask="$(echo "${LUKS_PASSWORD}" | cut -c-${luks_mask_fixed_len} 2>/dev/null)"
               luks_mask="${luks_mask}${luks_main_mask}"
 
-              CMD="./${BIN} ${OPTS} -a 3 -m ${hashType} ${luks_file} ${luks_mask}"
+              CMD="./${BIN} ${OPTS} -a 3 -m ${hashType} '${luks_file}' ${luks_mask}"
               ;;
             6)
               luks_pass_part1_len=$((${#LUKS_PASSWORD} - 1))
 
-              echo "${LUKS_PASSWORD}" | cut -c-${luks_pass_part1_len} > "${luks_pass_part_file1}"
+              echo "${LUKS_PASSWORD}" | cut -c-${luks_pass_part1_len} > "${luks_pass_part_file1}" 2>/dev/null
 
-              CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} ${luks_file} ${luks_pass_part_file1} ${luks_mask}"
+              CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} '${luks_file}' ${luks_pass_part_file1} ${luks_mask}"
               ;;
             7)
-              echo "${LUKS_PASSWORD}" | cut -c2- > "${luks_pass_part_file1}"
+              echo "${LUKS_PASSWORD}" | cut -c2- > "${luks_pass_part_file1}" 2>/dev/null
 
-              CMD="./${BIN} ${OPTS} -a 7 -m ${hashType} ${luks_file} ${luks_mask} ${luks_pass_part_file1}"
+              CMD="./${BIN} ${OPTS} -a 7 -m ${hashType} '${luks_file}' ${luks_mask} ${luks_pass_part_file1}"
               ;;
           esac
 
           if [ -n "${CMD}" ]; then
-            echo "> Testing hash type ${hashType} with attack mode ${attackType}, markov ${MARKOV}, single hash, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, luksMode ${luks_mode}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+            echo "> Testing hash type ${hashType} with attack mode ${attackType}, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, luksMode ${luks_mode}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
-            output=$(${CMD} 2>&1)
-            ret=${?}
+            if [ -f "${luks_first_test_file}" ]; then
+              output=$(eval ${CMD} 2>&1)
+              ret=${?}
 
-            echo "${output}" >> "${OUTD}/logfull.txt"
-
-            cnt=1
-            e_nf=0
-            msg="OK"
-
-            if [ ${ret} -ne 0 ]; then
-              e_nf=1
-              msg="Error"
+              echo "${output}" >> "${OUTD}/logfull.txt"
+            else
+              ret=30
             fi
 
-            echo "[ ${OUTD} ] [ Type ${hash_type}, Attack ${attackType}, Mode single, Device-Type ${TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, luksMode ${luks_mode} ] > $msg : ${e_nf}/${cnt} not found"
+            e_ce=0
+            e_rs=0
+            e_to=0
+            e_nf=0
+            e_nm=0
+            cnt=0
+
+            status ${ret}
+
+            cnt=1
+
+            msg="OK"
+
+            if [ "${e_ce}" -ne 0 ]; then
+              msg="Compare Error"
+            elif [ "${e_rs}" -ne 0 ]; then
+              msg="Skip"
+            elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
+              msg="Error"
+            elif [ "${e_to}" -ne 0 ]; then
+              msg="Warning"
+            fi
+
+            echo "[ ${OUTD} ] [ Type ${hash_type}, Attack ${attackType}, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, luksMode ${luks_mode} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
 
             status ${ret}
           fi
@@ -2991,6 +3160,10 @@ OPTIONS:
 
   -c    Disables markov-chains
 
+  -f    Use --force to ignore hashcat warnings (default : disabled)
+
+  -r    Setup max runtime limit (default: 400)
+
   -p    Package the tests into a .7z file
 
   -F    Use this folder as test folder instead of the default one
@@ -3010,14 +3183,14 @@ BIN="hashcat"
 MARKOV="enabled"
 ATTACK=0
 MODE=0
-TYPE="null"
+DEVICE_TYPE="null"
 KERNEL_TYPE="Optimized"
 VECTOR="default"
 HT=0
 PACKAGE=0
 OPTIMIZED=1
 
-while getopts "V:t:m:a:b:hcpd:x:o:d:D:F:POI:s:" opt; do
+while getopts "V:t:m:a:b:hcpd:x:o:d:D:F:POI:s:fr:" opt; do
 
   case ${opt} in
     "V")
@@ -3116,33 +3289,41 @@ while getopts "V:t:m:a:b:hcpd:x:o:d:D:F:POI:s:" opt; do
       ;;
 
     "O")
-        # optimized is already default, ignore it
+      # optimized is already default, ignore it
       ;;
 
     "d")
-        OPTS="${OPTS} -d ${OPTARG}"
+      OPTS="${OPTS} -d ${OPTARG}"
       ;;
 
     "D")
       if [ "${OPTARG}" = "1" ]; then
         OPTS="${OPTS} -D 1"
-        TYPE="Cpu"
+        DEVICE_TYPE="Cpu"
       elif [ "${OPTARG}" = "2" ]; then
         OPTS="${OPTS} -D 2"
-        TYPE="Gpu"
+        DEVICE_TYPE="Gpu"
       else
         OPTS="${OPTS} -D ${OPTARG}"
-        TYPE="Cpu + Gpu"
+        DEVICE_TYPE="Cpu + Gpu"
       fi
       ;;
 
     "F")
-        OUTD=$( echo "${OPTARG}" | sed 's!/$!!g' )
+      OUTD=$( echo "${OPTARG}" | sed 's!/$!!g' )
       ;;
 
     "P")
-        OPTIMIZED=0
-        KERNEL_TYPE="Pure"
+      OPTIMIZED=0
+      KERNEL_TYPE="Pure"
+      ;;
+
+    "f")
+      FORCE=1
+      ;;
+
+    "r")
+      RUNTIME=${OPTARG}
       ;;
 
     \?)
@@ -3156,36 +3337,60 @@ while getopts "V:t:m:a:b:hcpd:x:o:d:D:F:POI:s:" opt; do
 
 done
 
+# handle Apple Silicon
+
+IS_APPLE_SILICON=0
+
+if [ $(uname) == "Darwin" ]; then
+  BIN_sysctl=$(which sysctl)
+  if [ $? -eq 0 ]; then
+    CPU_TYPE=$(sysctl hw.cputype | awk '{print $2}')
+
+    if [ ${CPU_TYPE} -eq 16777228 ]; then
+      IS_APPLE_SILICON=1
+    fi
+  fi
+fi
+
 export IS_OPTIMIZED=${OPTIMIZED}
 
 if [ "${OPTIMIZED}" -eq 1 ]; then
   OPTS="${OPTS} -O"
 fi
 
-if [ "${TYPE}" = "null" ]; then
-  OPTS="${OPTS} -D 2"
-  TYPE="Gpu"
+# set max-runtime
+
+OPTS="${OPTS} --runtime ${RUNTIME}"
+
+# set default device-type to CPU with Apple Intel, else GPU
+
+if [ "${DEVICE_TYPE}" = "null" ]; then
+  if [ $(uname) == "Darwin" ] && [ ${IS_APPLE_SILICON} -eq 0 ]; then
+    OPTS="${OPTS} -D 1"
+    DEVICE_TYPE="Cpu"
+  else
+    OPTS="${OPTS} -D 2"
+    DEVICE_TYPE="Gpu"
+  fi
+fi
+
+if [ ${FORCE} -eq 1 ]; then
+  OPTS="${OPTS} --force"
 fi
 
 if [ -n "${ARCHITECTURE}" ]; then
-
   BIN="${BIN}${ARCHITECTURE}"
-
 fi
 
 if [ -n "${EXTENSION}" ]; then
-
   BIN="${BIN}.${EXTENSION}"
-
 fi
 
 if [ -n "${PACKAGE_FOLDER}" ]; then
-
   if [ ! -e "${PACKAGE_FOLDER}" ]; then
     echo "! folder '${PACKAGE_FOLDER}' does not exist"
     exit 1
   fi
-
 fi
 
 if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
@@ -3203,7 +3408,6 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
     HT_MIN=${HT}
     HT_MAX=${HT}
   elif echo -n "${HT}" | grep -q '^[0-9]\+-[1-9][0-9]*$'; then
-
     HT_MIN=$(echo -n ${HT} | sed "s/-.*//")
     HT_MAX=$(echo -n ${HT} | sed "s/.*-//")
 
@@ -3291,7 +3495,6 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
   for hash_type in $HASH_TYPES; do
 
     if [ "${HT}" -ne 65535 ]; then
-
       # check if the loop variable "hash_type" is between HT_MIN and HT_MAX (both included)
 
       if   [ "${hash_type}" -lt "${HT_MIN}" ]; then
@@ -3314,15 +3517,45 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
       fi
     fi
 
-    if [ -z "${PACKAGE_FOLDER}" ]; then
+    # skip deprecated hash-types
+    if [ "${hash_type}" -eq 2500 ] || [ "${hash_type}" -eq 2501 ] || [ "${hash_type}" -eq 16800 ] || [ "${hash_type}" -eq 16801 ] ; then
+      continue
+    fi
 
+    # test.pl produce wrong hashes with Apple
+    # would be necessary to investigate to understand why
+    if [ "${hash_type}" -eq 1800 ]; then
+      if [[ "$OSTYPE" == "darwin"* ]]; then
+        continue
+      fi
+    fi
+
+    # Digest::BLAKE2 is broken on Apple Silicon
+    if [ "${hash_type}" -eq 600 ]; then
+      if [ "${IS_APPLE_SILICON}" -eq 1 ]; then
+        continue
+      fi
+    fi
+
+    # Digest::GOST is broken on Apple Silicon
+    if [ "${hash_type}" -eq 6900 ]; then
+      if [ "${IS_APPLE_SILICON}" -eq 1 ]; then
+        continue
+      fi
+    fi
+
+    # Crypt::GCrypt is broken on Apple
+    if [ "${hash_type}" -eq 18600 ]; then
+      if [[ "$OSTYPE" == "darwin"* ]]; then
+        continue
+      fi
+    fi
+
+    if [ -z "${PACKAGE_FOLDER}" ]; then
       # init test data
       init
-
     else
-
       echo "[ ${OUTD} ] > Run packaged test for hash type $hash_type."
-
     fi
 
     if [ "${PACKAGE}" -eq 0 ]; then
@@ -3489,27 +3722,20 @@ if [ "${PACKAGE}" -eq 1 ]; then
 
     MODE=2
 
-    ls "${PACKAGE_FOLDER}"/*multi* >/dev/null 2>/dev/null
+    ls "${PACKAGE_FOLDER}"/*multi* &>/dev/null
 
-    if [ "${?}" -ne 0 ]
-    then
-
+    if [ "${?}" -ne 0 ]; then
       MODE=0
-
     fi
 
     HT=$(grep -o -- "-m  *[0-9]*" "${PACKAGE_FOLDER}/all.sh" | sort -u | sed 's/-m  //' 2> /dev/null)
 
     if [ -n "${HT}" ]; then
-
       HT_COUNT=$(echo "${HT}" | wc -l)
 
       if [ "${HT_COUNT}" -gt 1 ]; then
-
         HT=65535
-
       fi
-
     fi
 
     #ATTACK=65535 # more appropriate ?
@@ -3547,6 +3773,5 @@ if [ "${PACKAGE}" -eq 1 ]; then
     -e "s/^\(ATTACK\)=0/\1=${ATTACK}/" \
     "${OUTD}/test.sh"
 
-  ${PACKAGE_CMD} "${OUTD}/${OUTD}.7z" "${OUTD}/" >/dev/null 2>/dev/null
-
+  ${PACKAGE_CMD} "${OUTD}/${OUTD}.7z" "${OUTD}/" &>/dev/null
 fi

@@ -120,7 +120,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 {
   jwt_t *jwt = (jwt_t *) esalt_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 3;
 
@@ -268,7 +268,7 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   char ptr_plain[128];
 
-  if (hashconfig->kern_type == KERN_TYPE_JWT_HS256)
+  if (jwt->signature_len == 43)
   {
     u32 tmp[8];
 
@@ -287,7 +287,7 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
     ptr_plain[43] = 0;
   }
-  else if (hashconfig->kern_type == KERN_TYPE_JWT_HS384)
+  else if (jwt->signature_len == 64)
   {
     u64 tmp[6];
 
@@ -304,7 +304,7 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
     ptr_plain[64] = 0;
   }
-  else if (hashconfig->kern_type == KERN_TYPE_JWT_HS512)
+  else if (jwt->signature_len == 86)
   {
     u64 tmp[8];
 
@@ -356,6 +356,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

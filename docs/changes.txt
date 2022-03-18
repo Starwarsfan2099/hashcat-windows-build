@@ -1,29 +1,141 @@
-* changes v6.2.4 -> v6.2.x
+* changes v6.2.5 -> v6.2.x
 
 ##
 ## Algorithms
 ##
 
-- Added hash-mode: MultiBit Classic .wallet (scrypt)
+- Added hash-mode: Amazon AWS4-HMAC-SHA256
+- Added hash-mode: Exodus Desktop Wallet (scrypt)
+- Added hash-mode: PostgreSQL SCRAM-SHA-256
+- Added hash-mode: Teamspeak 3 (channel hash)
+- Added hash-mode: sha256($salt.sha256_bin($pass))
+- Added hash-mode: bcrypt(sha512($pass)) / bcryptsha512
+- Added hash-mode: Kerberos 5, etype 17, DB
+- Added hash-mode: Kerberos 5, etype 18, DB
+- Added hash-mode: DPAPI masterkey file v1 (context 3)
+- Added hash-mode: DPAPI masterkey file v2 (context 3)
+
+##
+## Features
+##
+
+- Added new backend support for Metal, the OpenCL replacement API on Apple
+- Added support to use 'John the Ripper' hash format with hash-type 13100
+- Added support to use 'John the Ripper' hash format with hash-type 18200
+- Added support to use --debug-mode in attack-mode 9 (Association Attack)
+- Added support to building universal macOS binary on Apple Silicon
+- Added hex encoding format for --separator option
+- Added password candidates range to --status-json output
+- Added parameter to Bitwarden mode for second iteration count
 
 ##
 ## Bugs
 ##
 
-- Fixed division by zero because backend_ctx->hardware_power_all was not re-inserted after refactoring device_param->hardware_power
+- Fixed building error on Raspberry Pi
+- Fixed backend active devices checks
+- Fixed false negative on Unit Test in case of out-of-memory with grep in single mode
+- Fixed false negative on Unit Test with hash-type 25400
+- Fixed false negative on hash-types 4510 and 4710 for hashes with long salts
+- Fixed functional error when nonce-error-corrections that were set on the command line in hash-mode 22000/22001 were not accepted
+- Fixed handling of devices in benchmark mode for "kernel build error". Instead of canceling, skip the device and move on to the next
+- Fixed handling of password candidates that are shorter than the minimum password length in Association Attack
+- Fixed --hash-info example password output: force uppercase if OPTS_TYPE_PT_UPPER is set
+- Fixed method of how OPTS_TYPE_AUX* kernels are called in an association attack, for example in WPA/WPA2 kernel
+- Fixed missing option flag OPTS_TYPE_SUGGEST_KG for hash-mode 11600 to inform the user about possible false positives in this mode
+- Fixed undefined function call to hc_byte_perm_S() in hash-mode 17010 on non-CUDA compute devices
+- Fixed Unit Test early exit on luks test file download/extract failure
+- Fixed Unit Test false negative if there are spaces in the filesystem path to hashcat
+- Fixed Unit Test salt-max in case of optimized kernel, with hash-type 22 and 23
+- Fixed wordlist handling in -m 3000 when candidate passwords use the $HEX[...] syntax
+- Fixed display problem of the "Optimizers applied" list for algorithms using Register-Limit
+- Fixed password limit in optimized kernel for hash-mode 10700
+
+##
+## Technical
+##
+
+- Association Attack: Enable module specific pw_min and pw_max settings to avoid false positives in -a 9 attack-mode
+- Autotune: Added error handling. By default skipping device on error, with --force using accel/loops/threads min values instead
+- Backend Info: Added folder_config info to output
+- Backend Info: Added generic system info to output (must be completed on Windows side)
+- Backend Info: Added local memory size to output
+- Backend: with kernel build options, switch from -I to -D INCLUDE_PATH, in order to support Apple Metal runtime
+- Backend: improved management of systems with multiple OpenCL platforms
+- CUDA Backend: moved functions to ext_cuda.c/ext_nvrtc.c and includes to ext_cuda.h/ext_nvrtc.h
+- Hardware Monitor: Add support for GPU device utilization readings using iokit on Apple Silicon (OpenCL and Metal)
+- Hash Info: show more information (Updated Hash-Format. Added Autodetect, Self-Test, Potfile and Plaintext encoding)
+- HIP Backend: moved functions to ext_hip.c/ext_hiprtc.c and includes to ext_hip.h/ext_hiprtc.h
+- Kernels: Refactored standard kernel declaration to use a structure holding u32/u64 attributes to reduce the number of attributes
+- Kernels: Refactored standard kernel includes, KERN_ATTR macros and rc4 cipher functions, in order to support Apple Metal runtime
+- Kernels: Set the default Address Space Qualifier for any pointer, in order to support Apple Metal runtime
+- Makefile: updated MACOSX_DEPLOYMENT_TARGET to 10.15 and removed OpenCL framework from LFLAGS_NATIVE on MacOS
+- Metal Runtime: added support for vectors up to 4
+- OpenCL Backend: added workaround to make optimized kernels work on Apple Silicon
+- OpenCL Backend: moved functions to ext_OpenCL.c and includes to ext_OpenCL.h
+- OpenCL Backend: show device_type in device list info on Apple Silicon
+- OpenCL Kernel: Set native_threads to 32 on Apple GPU's for various hash-modes
+- OpenCL Runtime: Added support to use Apple Silicon compute devices
+- OpenCL Runtime: Add some unstable warnings detected on macOS
+- OpenCL Runtime: Set default device-type to GPU with Apple Silicon compute devices
+- Status code: updated negative status code (added kernel create failure and resync)
+- Status code: updated negative status code, usefull in Unit tests engine (test.sh)
+- Terminal: show empty OpenCL platforms only in backend information mode
+- Tuning Database: Added a warning if a module implements module_extra_tuningdb_block but the installed computing device is not found
+- Unit tests: added -r (--runtime) option
+- Unit tests: handle negative status code, skip deprecated hash-types, skip hash-types with known perl modules issues, updated output
+- Unit tests: Updated test.sh to set default device-type to CPU with Apple Intel and added -f (--force) option
+- Usage Screen: On windows console, wait for any keypress if usage_mini_print() is used
+- User Options: Add new module function module_hash_decode_postprocess() to override hash specific configurations from command line
+- User Options: Change --backend-info/-I option type, from bool to uint
+
+* changes v6.2.4 -> v6.2.5
+
+##
+## Algorithms
+##
+
+- Added hash-mode: CRC32C
+- Added hash-mode: CRC64Jones
+- Added hash-mode: MultiBit Classic .wallet (scrypt)
+- Added hash-mode: MurmurHash3
+- Added hash-mode: Windows Hello PIN/Password
+
+##
+## Performance
+##
+
+- PDF Kernel (10700): Improved performance on AMD GPUs by using shared memory for the scratch buffer and disabled inlining to save spilling
+
+##
+## Bugs
+##
+
+- Fixed divide by zero error because backend_ctx->hardware_power_all was not re-inserted after refactoring device_param->hardware_power
+- Fixed invalid handling of initialization value for -m 11500
 - Fixed invalid progress counter initialization in attack-mode 9 when using --skip or --restore
 - Fixed out-of-boundary reads in attack-mode 9 that were caused by a missing work item limit in the refactored autotune engine
+- Fixed out-of-boundary reads in hash-mode 22400 (AES Crypt) kernel
 - Fixed strategy for eliminating hashes with zero length in LM when multiple hashes contain a zero hash
 
 ##
 ## Technical
 ##
 
-- Back-end devices: In -S mode, limit the number of workitems so that no more than 2GB of host memory is required per backend device
+- AMD Driver: Updated requirements for AMD Linux drivers to ROCm 4.5 or later due to new HIP interface
+- Backend devices: In -S mode, limit the number of workitems so that no more than 2GB of host memory is required per backend device
+- Backend devices: In non -S mode, limit the number of workitems so that no more than 4GB of host memory is required per backend device
+- Backend types: The default filter for the device types is now set so that only the GPU is used, except for APPLE, where we set CPU
+- Benchmark: Update benchmark_deep.pl with new hash modes added (also new hash modes which were added with v6.2.3)
+- Electrum Wallet: Added new entropy-based check to test whether the decryption was successful or not
+- Module Optimizers: Added OPTS_TYPE_MAXIMUM_THREADS to deactivate the else branch route in the section to find -T before compilation
 - Makefile: Added wildcard include src/modules/module_*.mk directive so that plugin developers can add 3rd party libraries for their plugins
 - Rejects: Disabled checking of the minimum and maximum length of the password candidate in attack-mode 9 because they are incompatible
-- POCL: Added a workaround for an issue in POCL that uses a quote character as part of the path itself given to a path for the -I option
+- POCL: Added a workaround for an issue in POCL where a quote character is used as a part of the path itself which is passed as a path for the -I option
+- Device Threads: The default maximum device thread number has been reduced from 1024 to 256, users can still overwrite with the -T option
 - Tuning-DB: Add missing entries for -m 25600 and -m 25800 for CPU cracking
+- OpenCL Backend: added workaround to support Apple Silicon (GPU: M1, M1 Pro, and M1 Max)
+- MacOS v10.8+ (PBKDF2-SHA512): Added support for parsing new mac2john hash format directly in the module for -m 7100
 
 * changes v6.2.3 -> v6.2.4
 

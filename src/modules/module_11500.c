@@ -45,7 +45,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 {
   u32 *digest = (u32 *) digest_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 2;
 
@@ -67,7 +67,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   const u8 *hash_pos = token.buf[0];
 
-  digest[0] = hex_to_u32 (hash_pos + 0);
+  digest[0] = hex_to_u32 (hash_pos);
   digest[1] = 0;
   digest[2] = 0;
   digest[3] = 0;
@@ -78,11 +78,18 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   digest[3] = 0;
 
   const u8 *salt_pos = token.buf[1];
-  const int salt_len = token.len[1];
 
-  const bool parse_rc = generic_salt_decode (hashconfig, salt_pos, salt_len, (u8 *) salt->salt_buf, (int *) &salt->salt_len);
+  salt->salt_buf[0] = hex_to_u32 (salt_pos);
+  salt->salt_buf[1] = 0;
+  salt->salt_buf[2] = 0;
+  salt->salt_buf[3] = 0;
 
-  if (parse_rc == false) return (PARSER_SALT_LENGTH);
+  salt->salt_buf[0] = byte_swap_32 (salt->salt_buf[0]);
+  salt->salt_buf[1] = 0;
+  salt->salt_buf[2] = 0;
+  salt->salt_buf[3] = 0;
+
+  salt->salt_len = 4;
 
   return (PARSER_OK);
 }
@@ -91,13 +98,7 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 {
   const u32 *digest = (const u32 *) digest_buf;
 
-  char tmp_salt[SALT_MAX * 2];
-
-  const int salt_len = generic_salt_encode (hashconfig, (const u8 *) salt->salt_buf, (const int) salt->salt_len, (u8 *) tmp_salt);
-
-  tmp_salt[salt_len] = 0;
-
-  const int line_len = snprintf (line_buf, line_size, "%08x%c%s", digest[0], hashconfig->separator, tmp_salt);
+  const int line_len = snprintf (line_buf, line_size, "%08x%c%08x", digest[0], hashconfig->separator, salt->salt_buf[0]);
 
   return line_len;
 }
@@ -129,6 +130,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

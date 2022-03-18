@@ -6,15 +6,15 @@
 #define NEW_SIMD_CODE
 
 #ifdef KERNEL_STATIC
-#include "inc_vendor.h"
-#include "inc_types.h"
-#include "inc_platform.cl"
-#include "inc_common.cl"
-#include "inc_simd.cl"
-#include "inc_hash_ripemd160.cl"
-#include "inc_cipher_aes.cl"
-#include "inc_cipher_twofish.cl"
-#include "inc_cipher_serpent.cl"
+#include M2S(INCLUDE_PATH/inc_vendor.h)
+#include M2S(INCLUDE_PATH/inc_types.h)
+#include M2S(INCLUDE_PATH/inc_platform.cl)
+#include M2S(INCLUDE_PATH/inc_common.cl)
+#include M2S(INCLUDE_PATH/inc_simd.cl)
+#include M2S(INCLUDE_PATH/inc_hash_ripemd160.cl)
+#include M2S(INCLUDE_PATH/inc_cipher_aes.cl)
+#include M2S(INCLUDE_PATH/inc_cipher_twofish.cl)
+#include M2S(INCLUDE_PATH/inc_cipher_serpent.cl)
 #endif
 
 typedef struct tc
@@ -32,9 +32,9 @@ typedef struct tc
 } tc_t;
 
 #ifdef KERNEL_STATIC
-#include "inc_truecrypt_crc32.cl"
-#include "inc_truecrypt_xts.cl"
-#include "inc_truecrypt_keyfile.cl"
+#include M2S(INCLUDE_PATH/inc_truecrypt_crc32.cl)
+#include M2S(INCLUDE_PATH/inc_truecrypt_xts.cl)
+#include M2S(INCLUDE_PATH/inc_truecrypt_keyfile.cl)
 #endif
 
 typedef struct tc_tmp
@@ -47,7 +47,7 @@ typedef struct tc_tmp
 
 } tc_tmp_t;
 
-DECLSPEC void hmac_ripemd160_run_V (u32x *w0, u32x *w1, u32x *w2, u32x *w3, u32x *ipad, u32x *opad, u32x *digest)
+DECLSPEC void hmac_ripemd160_run_V (PRIVATE_AS u32x *w0, PRIVATE_AS u32x *w1, PRIVATE_AS u32x *w2, PRIVATE_AS u32x *w3, PRIVATE_AS u32x *ipad, PRIVATE_AS u32x *opad, PRIVATE_AS u32x *digest)
 {
   digest[0] = ipad[0];
   digest[1] = ipad[1];
@@ -93,18 +93,18 @@ KERNEL_FQ void m06212_init (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
    * keyboard layout shared
    */
 
-  const int keyboard_layout_mapping_cnt = esalt_bufs[DIGESTS_OFFSET].keyboard_layout_mapping_cnt;
+  const int keyboard_layout_mapping_cnt = esalt_bufs[DIGESTS_OFFSET_HOST].keyboard_layout_mapping_cnt;
 
   LOCAL_VK keyboard_layout_mapping_t s_keyboard_layout_mapping_buf[256];
 
   for (u32 i = lid; i < 256; i += lsz)
   {
-    s_keyboard_layout_mapping_buf[i] = esalt_bufs[DIGESTS_OFFSET].keyboard_layout_mapping_buf[i];
+    s_keyboard_layout_mapping_buf[i] = esalt_bufs[DIGESTS_OFFSET_HOST].keyboard_layout_mapping_buf[i];
   }
 
   SYNC_THREADS ();
 
-  if (gid >= gid_max) return;
+  if (gid >= GID_CNT) return;
 
   /**
    * base
@@ -149,7 +149,7 @@ KERNEL_FQ void m06212_init (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
 
   hc_execute_keyboard_layout_mapping (w, pw_len, s_keyboard_layout_mapping_buf, keyboard_layout_mapping_cnt);
 
-  pw_len = hc_apply_keyfile_tc (w, pw_len, &esalt_bufs[DIGESTS_OFFSET]);
+  pw_len = hc_apply_keyfile_tc (w, pw_len, &esalt_bufs[DIGESTS_OFFSET_HOST]);
 
   ripemd160_hmac_ctx_t ripemd160_hmac_ctx;
 
@@ -167,7 +167,7 @@ KERNEL_FQ void m06212_init (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   tmps[gid].opad[3] = ripemd160_hmac_ctx.opad.h[3];
   tmps[gid].opad[4] = ripemd160_hmac_ctx.opad.h[4];
 
-  ripemd160_hmac_update_global (&ripemd160_hmac_ctx, esalt_bufs[DIGESTS_OFFSET].salt_buf, 64);
+  ripemd160_hmac_update_global (&ripemd160_hmac_ctx, esalt_bufs[DIGESTS_OFFSET_HOST].salt_buf, 64);
 
   for (u32 i = 0, j = 1; i < 32; i += 5, j += 1)
   {
@@ -217,7 +217,7 @@ KERNEL_FQ void m06212_loop (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
 {
   const u64 gid = get_global_id (0);
 
-  if ((gid * VECT_SIZE) >= gid_max) return;
+  if ((gid * VECT_SIZE) >= GID_CNT) return;
 
   u32x ipad[5];
   u32x opad[5];
@@ -251,7 +251,7 @@ KERNEL_FQ void m06212_loop (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
     out[3] = packv (tmps, out, gid, i + 3);
     out[4] = packv (tmps, out, gid, i + 4);
 
-    for (u32 j = 0; j < loop_cnt; j++)
+    for (u32 j = 0; j < LOOP_CNT; j++)
     {
       u32x w0[4];
       u32x w1[4];
@@ -355,7 +355,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
 
   #endif
 
-  if (gid >= gid_max) return;
+  if (gid >= GID_CNT) return;
 
   u32 ukey1[8];
 
@@ -383,7 +383,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 
@@ -391,7 +391,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 
@@ -399,7 +399,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 
@@ -429,7 +429,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 
@@ -437,7 +437,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 
@@ -445,7 +445,7 @@ KERNEL_FQ void m06212_comp (KERN_ATTR_TMPS_ESALT (tc_tmp_t, tc_t))
   {
     if (hc_atomic_inc (&hashes_shown[0]) == 0)
     {
-      mark_hash (plains_buf, d_return_buf, SALT_POS, digests_cnt, 0, 0, gid, 0, 0, 0);
+      mark_hash (plains_buf, d_return_buf, SALT_POS_HOST, DIGESTS_CNT, 0, 0, gid, 0, 0, 0);
     }
   }
 }

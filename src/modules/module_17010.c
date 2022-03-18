@@ -134,7 +134,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   gpg_t *gpg = (gpg_t *) esalt_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt = 13;
 
@@ -280,7 +280,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   const u32 salt_iter = hc_strtoul ((const char *) token.buf[11], NULL, 10);
 
-  if (salt_iter < 8 || salt_iter > 1000000) return (PARSER_SALT_ITERATION);
+  if (salt_iter < 8 || salt_iter > 65011712) return (PARSER_SALT_ITERATION);
 
   salt->salt_iter = salt_iter;
 
@@ -358,6 +358,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

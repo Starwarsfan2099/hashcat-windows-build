@@ -4,15 +4,15 @@
  */
 
 #ifdef KERNEL_STATIC
-#include "inc_vendor.h"
-#include "inc_types.h"
-#include "inc_platform.cl"
-#include "inc_common.cl"
-#include "inc_hash_sha1.cl"
+#include M2S(INCLUDE_PATH/inc_vendor.h)
+#include M2S(INCLUDE_PATH/inc_types.h)
+#include M2S(INCLUDE_PATH/inc_platform.cl)
+#include M2S(INCLUDE_PATH/inc_common.cl)
+#include M2S(INCLUDE_PATH/inc_hash_sha1.cl)
 #endif
 
-#define COMPARE_S "inc_comp_single.cl"
-#define COMPARE_M "inc_comp_multi.cl"
+#define COMPARE_S M2S(INCLUDE_PATH/inc_comp_single.cl)
+#define COMPARE_M M2S(INCLUDE_PATH/inc_comp_multi.cl)
 
 typedef struct androidpin_tmp
 {
@@ -2076,7 +2076,7 @@ CONSTANT_VK u32a c_pc_len[1024] =
   4
 };
 
-DECLSPEC void append_word (u32 *w0, u32 *w1, const u32 *append, const u32 offset)
+DECLSPEC void append_word (PRIVATE_AS u32 *w0, PRIVATE_AS u32 *w1, PRIVATE_AS const u32 *append, const u32 offset)
 {
   switch (offset)
   {
@@ -2110,7 +2110,7 @@ DECLSPEC void append_word (u32 *w0, u32 *w1, const u32 *append, const u32 offset
   }
 }
 
-DECLSPEC void append_salt (u32 *w0, u32 *w1, u32 *w2, const u32 *append, const u32 offset)
+DECLSPEC void append_salt (PRIVATE_AS u32 *w0, PRIVATE_AS u32 *w1, PRIVATE_AS u32 *w2, PRIVATE_AS const u32 *append, const u32 offset)
 {
   u32 tmp0;
   u32 tmp1;
@@ -2211,7 +2211,7 @@ KERNEL_FQ void m05800_init (KERN_ATTR_TMPS (androidpin_tmp_t))
 
   const u64 gid = get_global_id (0);
 
-  if (gid >= gid_max) return;
+  if (gid >= GID_CNT) return;
 
   u32 word_buf[4];
 
@@ -2226,15 +2226,15 @@ KERNEL_FQ void m05800_init (KERN_ATTR_TMPS (androidpin_tmp_t))
    * salt
    */
 
-  u32 salt_len = salt_bufs[SALT_POS].salt_len;
+  u32 salt_len = salt_bufs[SALT_POS_HOST].salt_len;
 
   u32 salt_buf[5];
 
-  salt_buf[0] = salt_bufs[SALT_POS].salt_buf[0];
-  salt_buf[1] = salt_bufs[SALT_POS].salt_buf[1];
-  salt_buf[2] = salt_bufs[SALT_POS].salt_buf[2];
-  salt_buf[3] = salt_bufs[SALT_POS].salt_buf[3];
-  salt_buf[4] = salt_bufs[SALT_POS].salt_buf[4];
+  salt_buf[0] = salt_bufs[SALT_POS_HOST].salt_buf[0];
+  salt_buf[1] = salt_bufs[SALT_POS_HOST].salt_buf[1];
+  salt_buf[2] = salt_bufs[SALT_POS_HOST].salt_buf[2];
+  salt_buf[3] = salt_bufs[SALT_POS_HOST].salt_buf[3];
+  salt_buf[4] = salt_bufs[SALT_POS_HOST].salt_buf[4];
 
   /**
    * init
@@ -2317,7 +2317,7 @@ KERNEL_FQ void m05800_loop (KERN_ATTR_TMPS (androidpin_tmp_t))
 
   SYNC_THREADS ();
 
-  if (gid >= gid_max) return;
+  if (gid >= GID_CNT) return;
 
   /**
    * base
@@ -2344,21 +2344,21 @@ KERNEL_FQ void m05800_loop (KERN_ATTR_TMPS (androidpin_tmp_t))
    * salt
    */
 
-  u32 salt_len = salt_bufs[SALT_POS].salt_len;
+  u32 salt_len = salt_bufs[SALT_POS_HOST].salt_len;
 
   u32 salt_buf[5];
 
-  salt_buf[0] = salt_bufs[SALT_POS].salt_buf[0];
-  salt_buf[1] = salt_bufs[SALT_POS].salt_buf[1];
-  salt_buf[2] = salt_bufs[SALT_POS].salt_buf[2];
-  salt_buf[3] = salt_bufs[SALT_POS].salt_buf[3];
-  salt_buf[4] = salt_bufs[SALT_POS].salt_buf[4];
+  salt_buf[0] = salt_bufs[SALT_POS_HOST].salt_buf[0];
+  salt_buf[1] = salt_bufs[SALT_POS_HOST].salt_buf[1];
+  salt_buf[2] = salt_bufs[SALT_POS_HOST].salt_buf[2];
+  salt_buf[3] = salt_bufs[SALT_POS_HOST].salt_buf[3];
+  salt_buf[4] = salt_bufs[SALT_POS_HOST].salt_buf[4];
 
   /**
    * loop
    */
 
-  for (u32 i = 0, j = loop_pos + 1; i < loop_cnt; i++, j++)
+  for (u32 i = 0, j = LOOP_POS + 1; i < LOOP_CNT; i++, j++)
   {
     const u32 pc_dec = s_pc_dec[j];
     const u32 pc_len = s_pc_len[j];
@@ -2419,7 +2419,7 @@ KERNEL_FQ void m05800_comp (KERN_ATTR_TMPS (androidpin_tmp_t))
 
   const u64 gid = get_global_id (0);
 
-  if (gid >= gid_max) return;
+  if (gid >= GID_CNT) return;
 
   const u64 lid = get_local_id (0);
 

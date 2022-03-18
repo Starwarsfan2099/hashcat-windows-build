@@ -62,6 +62,12 @@ bool module_unstable_warning (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
     {
       return true;
     }
+
+    // AppleM1, OpenCL, MTLCompilerService, createKernel: newComputePipelineState failed (pure/optimized kernel)
+    if ((device_param->opencl_device_vendor_id == VENDOR_ID_APPLE) && (device_param->opencl_device_type & CL_DEVICE_TYPE_GPU))
+    {
+      return true;
+    }
   }
 
   return false;
@@ -78,7 +84,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 {
   u64 *digest = (u64 *) digest_buf;
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 4;
 
@@ -227,6 +233,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_save         = MODULE_DEFAULT;
+  module_ctx->module_hash_decode_postprocess  = MODULE_DEFAULT;
   module_ctx->module_hash_decode_potfile      = MODULE_DEFAULT;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

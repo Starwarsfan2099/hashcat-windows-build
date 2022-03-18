@@ -211,6 +211,66 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
 
   hc_thread_wait (backend_ctx->backend_devices_cnt, c_threads);
 
+  // check for any autotune failures
+  // by default, skipping device on error
+  // using --force, accel/loops/threads min values are used instead of skipping
+
+  int at_err = 0;
+
+  for (int backend_devices_idx = 0; backend_devices_idx < backend_ctx->backend_devices_cnt; backend_devices_idx++)
+  {
+    if (backend_ctx->enabled == false) continue;
+
+    hc_device_param_t *device_param = backend_ctx->devices_param + backend_devices_idx;
+
+    if (device_param->skipped == true) continue;
+
+    if (device_param->skipped_warning == true) continue;
+
+    if (device_param->at_status == AT_STATUS_FAILED)
+    {
+      at_err++;
+
+      if (user_options->force == false)
+      {
+        event_log_warning (hashcat_ctx, "* Device #%u: skipped, due to kernel autotune failure (%d).", device_param->device_id + 1, device_param->at_rc);
+
+        device_param->skipped = true;
+
+        // update counters
+
+        if (device_param->is_hip == true)    backend_ctx->hip_devices_active--;
+        if (device_param->is_cuda == true)   backend_ctx->cuda_devices_active--;
+        if (device_param->is_opencl == true) backend_ctx->opencl_devices_active--;
+
+        backend_ctx->backend_devices_active--;
+      }
+      else
+      {
+        event_log_warning (hashcat_ctx, "* Device #%u: detected kernel autotune failure (%d), min values will be used", device_param->device_id + 1, device_param->at_rc);
+      }
+    }
+  }
+
+  if (at_err > 0)
+  {
+    event_log_warning (hashcat_ctx, NULL);
+
+    if (user_options->force == false)
+    {
+      // if all enabled devices fail, abort session
+      if (backend_ctx->backend_devices_active <= 0)
+      {
+        event_log_error (hashcat_ctx, "Aborting session due to kernel autotune failures, for all active devices.");
+
+        event_log_warning (hashcat_ctx, "You can use --force to override this, but do not report related errors.");
+        event_log_warning (hashcat_ctx, NULL);
+
+        return -10;
+      }
+    }
+  }
+
   EVENT (EVENT_AUTOTUNE_FINISHED);
 
   /**
@@ -767,7 +827,38 @@ static int outer_loop (hashcat_ctx_t *hashcat_ctx)
 
   EVENT (EVENT_BACKEND_SESSION_PRE);
 
-  if (backend_session_begin (hashcat_ctx) == -1) return -1;
+  if (backend_session_begin (hashcat_ctx) == -1)
+  {
+    if (user_options->benchmark == true)
+    {
+      if (user_options->hash_mode_chgd == false)
+      {
+        // finalize backend session
+
+        backend_session_destroy (hashcat_ctx);
+
+        // clean up
+
+        #ifdef WITH_BRAIN
+        brain_ctx_destroy       (hashcat_ctx);
+        #endif
+
+        bitmap_ctx_destroy      (hashcat_ctx);
+        combinator_ctx_destroy  (hashcat_ctx);
+        cpt_ctx_destroy         (hashcat_ctx);
+        hashconfig_destroy      (hashcat_ctx);
+        hashes_destroy          (hashcat_ctx);
+        mask_ctx_destroy        (hashcat_ctx);
+        status_progress_destroy (hashcat_ctx);
+        straight_ctx_destroy    (hashcat_ctx);
+        wl_data_destroy         (hashcat_ctx);
+
+        return 0;
+      }
+    }
+
+    return -1;
+  }
 
   EVENT (EVENT_BACKEND_SESSION_POST);
 
@@ -1500,6 +1591,7 @@ int hashcat_session_execute (hashcat_ctx_t *hashcat_ctx)
   logfile_ctx_t   *logfile_ctx   = hashcat_ctx->logfile_ctx;
   status_ctx_t    *status_ctx    = hashcat_ctx->status_ctx;
   user_options_t  *user_options  = hashcat_ctx->user_options;
+  backend_ctx_t   *backend_ctx   = hashcat_ctx->backend_ctx;
 
   // start logfile entry
 
@@ -1712,6 +1804,18 @@ int hashcat_session_execute (hashcat_ctx_t *hashcat_ctx)
     if (status_ctx->devices_status == STATUS_CRACKED)             rc_final =  0;
     if (status_ctx->devices_status == STATUS_ERROR)               rc_final = -1;
   }
+  else if (rc_final == -1)
+  {
+    // setup the new negative status code, usefull in test.sh
+    // -2 is marked as used in status_codes.txt
+    if (backend_ctx->runtime_skip_warning  == true)               rc_final = -3;
+    if (backend_ctx->memory_hit_warning    == true)               rc_final = -4;
+    if (backend_ctx->kernel_build_warning  == true)               rc_final = -5;
+    if (backend_ctx->kernel_create_warning == true)               rc_final = -6;
+    if (backend_ctx->kernel_accel_warnings == true)               rc_final = -7;
+    if (backend_ctx->extra_size_warning    == true)               rc_final = -8;
+    if (backend_ctx->mixed_warnings        == true)               rc_final = -9;
+  }
 
   // special case for --stdout
 
@@ -1823,6 +1927,7 @@ int hashcat_get_status (hashcat_ctx_t *hashcat_ctx, hashcat_status_t *hashcat_st
 
   hashcat_status->digests_cnt                 = status_get_digests_cnt                (hashcat_ctx);
   hashcat_status->digests_done                = status_get_digests_done               (hashcat_ctx);
+  hashcat_status->digests_done_pot            = status_get_digests_done_pot           (hashcat_ctx);
   hashcat_status->digests_percent             = status_get_digests_percent            (hashcat_ctx);
   hashcat_status->hash_target                 = status_get_hash_target                (hashcat_ctx);
   hashcat_status->hash_name                   = status_get_hash_name                  (hashcat_ctx);

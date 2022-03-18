@@ -47,6 +47,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "     --markov-hcstat2           | File | Specify hcstat2 file to use                          | --markov-hcstat2=my.hcstat2",
   "     --markov-disable           |      | Disables markov-chains, emulates classic brute-force |",
   "     --markov-classic           |      | Enables classic markov-chains, no per-position       |",
+  "     --markov-inverse           |      | Enables inverse markov-chains, no per-position       |",
   " -t, --markov-threshold         | Num  | Threshold X when to stop accepting new markov-chains | -t 50",
   "     --runtime                  | Num  | Abort session after X seconds of runtime             | --runtime=10",
   "     --session                  | Str  | Define specific session name                         | --session=mysession",
@@ -93,8 +94,10 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "     --hash-info                |      | Show information for each hash-mode                  |",
   "     --example-hashes           |      | Alias of --hash-info                                 |",
   "     --backend-ignore-cuda      |      | Do not try to open CUDA interface on startup         |",
+  "     --backend-ignore-hip       |      | Do not try to open HIP interface on startup          |",
+  "     --backend-ignore-metal     |      | Do not try to open Metal interface on startup        |",
   "     --backend-ignore-opencl    |      | Do not try to open OpenCL interface on startup       |",
-  " -I, --backend-info             |      | Show info about detected backend API devices         | -I",
+  " -I, --backend-info             |      | Show system/evironment/backend API info              | -I or -II",
   " -d, --backend-devices          | Str  | Backend devices to use, separated with commas        | -d 1",
   " -D, --opencl-device-types      | Str  | OpenCL device-types to use, separated with commas    | -D 1",
   " -O, --optimized-kernel-enable  |      | Enable optimized kernels (limits password length)    |",
@@ -283,6 +286,13 @@ void usage_mini_print (const char *progname)
 
     fwrite (EOL, strlen (EOL), 1, stdout);
   }
+
+  #if defined (_WIN)
+  printf ("\n");
+  printf ("Press any key to exit\n");
+
+  getch();
+  #endif
 }
 
 void usage_big_print (hashcat_ctx_t *hashcat_ctx)

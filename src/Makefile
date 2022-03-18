@@ -6,7 +6,7 @@
 SHARED                  ?= 0
 DEBUG                   := 0
 PRODUCTION              := 0
-PRODUCTION_VERSION      := v6.2.4
+PRODUCTION_VERSION      := v6.2.5
 ENABLE_CUBIN            ?= 1
 ENABLE_BRAIN            ?= 1
 ENABLE_UNRAR            ?= 1
@@ -31,12 +31,12 @@ UNAME                   := $(patsubst MSYS_NT-%,MSYS2,$(UNAME))
 UNAME                   := $(patsubst MINGW32_NT-%,MSYS2,$(UNAME))
 UNAME                   := $(patsubst MINGW64_NT-%,MSYS2,$(UNAME))
 
-ifeq (,$(filter $(UNAME),Linux FreeBSD Darwin CYGWIN MSYS2))
+ifeq (,$(filter $(UNAME),Linux FreeBSD NetBSD Darwin CYGWIN MSYS2))
 $(error "! Your Operating System ($(UNAME)) is not supported by this Makefile")
 endif
 
 ifeq ($(DEBUG),1)
-$(warning "## Detected Operating System : $(UNAME)")
+$(info "## Detected Operating System : $(UNAME)")
 endif
 
 ##
@@ -76,9 +76,10 @@ AR                      := /usr/bin/ar
 SED                     := /usr/bin/sed
 SED_IN_PLACE            := -i ""
 DARWIN_VERSION          := $(shell uname -r | cut -d. -f1)
+IS_APPLE_SILICON        := $(shell lipo /bin/zsh -verify_arch arm64e && echo 1 || echo 0)
 endif
 
-ifeq ($(UNAME),FreeBSD)
+ifneq (,$(filter $(UNAME),FreeBSD NetBSD))
 CC                      := cc
 CXX                     := c++
 SED                     := gsed
@@ -194,7 +195,9 @@ endif
 
 ifeq ($(USE_SYSTEM_LZMA),0)
 CFLAGS_LZMA             += -D_7ZIP_ST
+ifneq ($(CC),clang)
 CFLAGS_LZMA             += -Wno-misleading-indentation
+endif
 endif
 
 ## because ZLIB
@@ -248,6 +251,14 @@ CFLAGS                  += -DDEBUG -O0 -ggdb
 endif
 CFLAGS                  += -fsanitize=address -fno-omit-frame-pointer
 endif
+endif
+endif
+
+ifeq ($(UNAME),Linux)
+IS_RPI                  := $(shell grep -q Raspberry /proc/cpuinfo && echo 1 || echo 0)
+
+ifeq ($(IS_RPI),1)
+CFLAGS                  += -mcpu=cortex-a72
 endif
 endif
 
@@ -312,8 +323,14 @@ LFLAGS_NATIVE           += -liconv
 endif
 endif # FreeBSD
 
+ifeq ($(UNAME),NetBSD)
+CFLAGS_NATIVE           := $(CFLAGS)
+LFLAGS_NATIVE           := $(LFLAGS)
+LFLAGS_NATIVE           += -lpthread
+endif # NetBSD
+
 ifeq ($(UNAME),Darwin)
-export MACOSX_DEPLOYMENT_TARGET=10.9
+export MACOSX_DEPLOYMENT_TARGET=10.15
 CFLAGS_NATIVE           := $(CFLAGS)
 CFLAGS_NATIVE           += -DWITH_HWMON
 
@@ -322,10 +339,23 @@ CFLAGS_NATIVE           += -DMISSING_CLOCK_GETTIME
 endif
 
 LFLAGS_NATIVE           := $(LFLAGS)
-LFLAGS_NATIVE           += -framework OpenCL
+LFLAGS_NATIVE           += -framework CoreFoundation
+LFLAGS_NATIVE           += -framework CoreGraphics
+LFLAGS_NATIVE           += -framework Foundation
 LFLAGS_NATIVE           += -framework IOKit
+LFLAGS_NATIVE           += -framework Metal
 LFLAGS_NATIVE           += -lpthread
 LFLAGS_NATIVE           += -liconv
+
+ifeq ($(IS_APPLE_SILICON),1)
+CFLAGS_NATIVE           += -arch arm64
+CFLAGS_NATIVE           += -arch x86_64
+ifeq ($(SHARED),1)
+LFLAGS_NATIVE           += -arch arm64
+LFLAGS_NATIVE           += -arch x86_64
+endif
+endif
+
 endif # Darwin
 
 ifeq ($(UNAME),CYGWIN)
@@ -366,6 +396,10 @@ EMU_OBJS_ALL            += emu_inc_hash_md4 emu_inc_hash_md5 emu_inc_hash_ripemd
 EMU_OBJS_ALL            += emu_inc_cipher_aes emu_inc_cipher_camellia emu_inc_cipher_des emu_inc_cipher_kuznyechik emu_inc_cipher_serpent emu_inc_cipher_twofish
 
 OBJS_ALL                := affinity autotune backend benchmark bitmap bitops combinator common convert cpt cpu_crc32 debugfile dictstat dispatch dynloader event ext_ADL ext_cuda ext_hip ext_nvapi ext_nvml ext_nvrtc ext_hiprtc ext_OpenCL ext_sysfs_amdgpu ext_sysfs_cpu ext_iokit ext_lzma filehandling folder hashcat hashes hlfmt hwmon induct interface keyboard_layout locking logfile loopback memory monitor mpsp outfile_check outfile pidfile potfile restore rp rp_cpu selftest slow_candidates shared status stdout straight terminal thread timer tuningdb usage user_options wordlist $(EMU_OBJS_ALL)
+
+ifeq ($(UNAME),Darwin)
+OBJS_ALL                += ext_metal
+endif
 
 ifeq ($(ENABLE_BRAIN),1)
 OBJS_ALL                += brain
@@ -456,10 +490,10 @@ distclean: clean
 # allow (whitelist) "make install" only on unix-based systems (also disallow cygwin/msys)
 
 ifneq ($(findstring install,$(MAKECMDGOALS)),)
-  ifeq (,$(filter $(UNAME),Linux FreeBSD Darwin))
+  ifeq (,$(filter $(UNAME),Linux FreeBSD Darwin NetBSD))
     define ERROR_INSTALL_DISALLOWED
 ! The 'install' target is not allowed on this operating system ($(UNAME)). \
-Only Linux, FreeBSD and Darwin can use the 'install' target
+Only Linux, FreeBSD, NetBSD and Darwin can use the 'install' target
     endef
 
     $(error $(ERROR_INSTALL_DISALLOWED))
@@ -565,6 +599,9 @@ uninstall:
 ##
 
 obj/%.NATIVE.o: src/%.c
+	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $< -o $@ -fpic
+
+obj/%.NATIVE.o: src/%.m
 	$(CC) -c $(CCFLAGS) $(CFLAGS_NATIVE) $< -o $@ -fpic
 
 ifeq ($(USE_SYSTEM_LZMA),0)

@@ -184,12 +184,12 @@ static void main_outerloop_starting (MAYBE_UNUSED hashcat_ctx_t *hashcat_ctx, MA
 
   status_ctx->shutdown_outer = false;
 
-  if (user_options->hash_info      == true) return;
-  if (user_options->keyspace       == true) return;
-  if (user_options->stdout_flag    == true) return;
-  if (user_options->backend_info   == true) return;
-  if (user_options->speed_only     == true) return;
-  if (user_options->identify       == true) return;
+  if (user_options->hash_info    == true) return;
+  if (user_options->keyspace     == true) return;
+  if (user_options->stdout_flag  == true) return;
+  if (user_options->speed_only   == true) return;
+  if (user_options->identify     == true) return;
+  if (user_options->backend_info  > 0)    return;
 
   if ((user_options_extra->wordlist_mode == WL_MODE_FILE) || (user_options_extra->wordlist_mode == WL_MODE_MASK))
   {
@@ -261,10 +261,10 @@ static void main_cracker_finished (MAYBE_UNUSED hashcat_ctx_t *hashcat_ctx, MAYB
   const user_options_t       *user_options       = hashcat_ctx->user_options;
   const user_options_extra_t *user_options_extra = hashcat_ctx->user_options_extra;
 
-  if (user_options->hash_info       == true) return;
-  if (user_options->keyspace        == true) return;
-  if (user_options->backend_info    == true) return;
-  if (user_options->stdout_flag     == true) return;
+  if (user_options->hash_info    == true) return;
+  if (user_options->keyspace     == true) return;
+  if (user_options->stdout_flag  == true) return;
+  if (user_options->backend_info  > 0)    return;
 
   // if we had a prompt, clear it
 
@@ -402,22 +402,22 @@ static void main_potfile_hash_left (MAYBE_UNUSED hashcat_ctx_t *hashcat_ctx, MAY
 static void main_potfile_num_cracked (MAYBE_UNUSED hashcat_ctx_t *hashcat_ctx, MAYBE_UNUSED const void *buf, MAYBE_UNUSED const size_t len)
 {
   const user_options_t *user_options = hashcat_ctx->user_options;
-  const hashes_t       *hashes       = hashcat_ctx->hashes;
+  hashes_t       *hashes       = hashcat_ctx->hashes;
 
   if (user_options->quiet == true) return;
 
-  const int potfile_remove_cracks = hashes->digests_done;
+  hashes->digests_done_pot = hashes->digests_done;
 
-  if (potfile_remove_cracks > 0)
+  if (hashes->digests_done_pot > 0)
   {
-    if (potfile_remove_cracks == 1)
+    if (hashes->digests_done_pot == 1)
     {
       event_log_info (hashcat_ctx, "INFO: Removed 1 hash found as potfile entry or as empty hash.");
       event_log_info (hashcat_ctx, NULL);
     }
     else
     {
-      event_log_info (hashcat_ctx, "INFO: Removed %d hashes found as potfile entries or as empty hashes.", potfile_remove_cracks);
+      event_log_info (hashcat_ctx, "INFO: Removed %d hashes found as potfile entries or as empty hashes.", hashes->digests_done_pot);
       event_log_info (hashcat_ctx, NULL);
     }
   }
@@ -520,6 +520,14 @@ static void main_outerloop_mainscreen (MAYBE_UNUSED hashcat_ctx_t *hashcat_ctx, 
     event_log_advice (hashcat_ctx, "This tells hashcat to continue attacking all target hashes until exhaustion.");
     event_log_advice (hashcat_ctx, "hashcat will NOT check for or remove targets present in the potfile, and");
     event_log_advice (hashcat_ctx, "will add ALL plains/collisions found, even duplicates, to the potfile.");
+    event_log_advice (hashcat_ctx, NULL);
+  }
+
+  if (hashconfig->potfile_disable == true)
+  {
+    event_log_advice (hashcat_ctx, "ATTENTION! Potfile storage is disabled for this hash mode.");
+    event_log_advice (hashcat_ctx, "Passwords cracked during this session will NOT be stored to the potfile.");
+    event_log_advice (hashcat_ctx, "Consider using -o to save cracked passwords.");
     event_log_advice (hashcat_ctx, NULL);
   }
   /**
@@ -746,10 +754,16 @@ static void main_monitor_performance_hint (MAYBE_UNUSED hashcat_ctx_t *hashcat_c
 
   if (user_options->slow_candidates == false)
   {
-    event_log_advice (hashcat_ctx, "* Append -S to the commandline.");
-    event_log_advice (hashcat_ctx, "  This has a drastic speed impact but can be better for specific attacks.");
-    event_log_advice (hashcat_ctx, "  Typical scenarios are a small wordlist but a large ruleset.");
-    event_log_advice (hashcat_ctx, NULL);
+    if ((user_options_extra->wordlist_mode == WL_MODE_FILE) || (user_options_extra->wordlist_mode == WL_MODE_MASK))
+    {
+      if ((user_options->attack_mode != ATTACK_MODE_HYBRID1) && (user_options->attack_mode != ATTACK_MODE_HYBRID2) && (user_options->attack_mode != ATTACK_MODE_ASSOCIATION))
+      {
+        event_log_advice (hashcat_ctx, "* Append -S to the commandline.");
+        event_log_advice (hashcat_ctx, "  This has a drastic speed impact but can be better for specific attacks.");
+        event_log_advice (hashcat_ctx, "  Typical scenarios are a small wordlist but a large ruleset.");
+        event_log_advice (hashcat_ctx, NULL);
+      }
+    }
   }
 
   event_log_advice (hashcat_ctx, "* Update your backend API runtime / driver the right way:");
@@ -1265,7 +1279,7 @@ int main (int argc, char **argv)
 
       rc_final = 0;
     }
-    else if (user_options->backend_info == true)
+    else if (user_options->backend_info > 0)
     {
       // if this is just backend_info, no need to execute some real cracking session
 

@@ -7,6 +7,7 @@
 #include "types.h"
 #include "memory.h"
 #include "event.h"
+#include "convert.h"
 #include "logfile.h"
 #include "interface.h"
 #include "shared.h"
@@ -34,6 +35,9 @@ static const struct option long_options[] =
   {"backend-devices",           required_argument, NULL, IDX_BACKEND_DEVICES},
   {"backend-ignore-cuda",       no_argument,       NULL, IDX_BACKEND_IGNORE_CUDA},
   {"backend-ignore-hip",        no_argument,       NULL, IDX_BACKEND_IGNORE_HIP},
+  #if defined (__APPLE__)
+  {"backend-ignore-metal",      no_argument,       NULL, IDX_BACKEND_IGNORE_METAL},
+  #endif
   {"backend-ignore-opencl",     no_argument,       NULL, IDX_BACKEND_IGNORE_OPENCL},
   {"backend-info",              no_argument,       NULL, IDX_BACKEND_INFO},
   {"backend-vector-width",      required_argument, NULL, IDX_BACKEND_VECTOR_WIDTH},
@@ -169,6 +173,9 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->backend_devices           = NULL;
   user_options->backend_ignore_cuda       = BACKEND_IGNORE_CUDA;
   user_options->backend_ignore_hip        = BACKEND_IGNORE_HIP;
+  #if defined (__APPLE__)
+  user_options->backend_ignore_metal      = BACKEND_IGNORE_METAL;
+  #endif
   user_options->backend_ignore_opencl     = BACKEND_IGNORE_OPENCL;
   user_options->backend_info              = BACKEND_INFO;
   user_options->backend_vector_width      = BACKEND_VECTOR_WIDTH;
@@ -454,8 +461,11 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_CPU_AFFINITY:              user_options->cpu_affinity              = optarg;                          break;
       case IDX_BACKEND_IGNORE_CUDA:       user_options->backend_ignore_cuda       = true;                            break;
       case IDX_BACKEND_IGNORE_HIP:        user_options->backend_ignore_hip        = true;                            break;
+      #if defined (__APPLE__)
+      case IDX_BACKEND_IGNORE_METAL:      user_options->backend_ignore_metal      = true;                            break;
+      #endif
       case IDX_BACKEND_IGNORE_OPENCL:     user_options->backend_ignore_opencl     = true;                            break;
-      case IDX_BACKEND_INFO:              user_options->backend_info              = true;                            break;
+      case IDX_BACKEND_INFO:              user_options->backend_info++;                                              break;
       case IDX_BACKEND_DEVICES:           user_options->backend_devices           = optarg;                          break;
       case IDX_BACKEND_VECTOR_WIDTH:      user_options->backend_vector_width      = hc_strtoul (optarg, NULL, 10);
                                           user_options->backend_vector_width_chgd = true;                            break;
@@ -594,9 +604,31 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
 
   if (user_options->separator_chgd == true)
   {
-    if (strlen (user_options->separator) != 1)
+    bool error = false;
+    if ((strlen (user_options->separator) != 1) && (strlen (user_options->separator) != 4))
     {
-      event_log_error (hashcat_ctx, "Separator length has to be exactly 1 byte.");
+        error = true;
+    }
+    if (strlen (user_options->separator) == 4)
+    {
+      if ((user_options->separator[0] == '0') && (user_options->separator[1] == 'x'))
+      {
+        if (is_valid_hex_string((u8 * )(&(user_options->separator[2])),2)){
+          u8 sep = hex_to_u8((u8 * )(&(user_options->separator[2])));
+          user_options->separator[0] = sep;
+          user_options->separator[1] = 0;
+        }
+        else
+        {
+          error = true;
+        }
+      }
+      else{
+        error = true;
+      }
+    }
+    if (error){
+      event_log_error (hashcat_ctx, "Separator length has to be exactly 1 byte (single char or hex format e.g. 0x09 for TAB)");
 
       return -1;
     }
@@ -1057,7 +1089,7 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
 
   if (user_options->debug_mode > 0)
   {
-    if (user_options->attack_mode != ATTACK_MODE_STRAIGHT)
+    if ((user_options->attack_mode != ATTACK_MODE_STRAIGHT) && (user_options->attack_mode != ATTACK_MODE_ASSOCIATION))
     {
       event_log_error (hashcat_ctx, "Parameter --debug-mode option is only allowed in attack mode 0 (straight).");
 
@@ -1340,12 +1372,19 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
 
     // --stdin-timeout-abort can only be used in stdin mode
 
-    if (user_options->hc_argc != 1)
+    if (user_options->hc_argc > 1)
     {
       event_log_error (hashcat_ctx, "Use of --stdin-timeout-abort is only allowed in stdin mode (pipe).");
 
       return -1;
     }
+  }
+
+  if (user_options->backend_info > 2)
+  {
+    event_log_error (hashcat_ctx, "Invalid --backend-info/-I value, must have a value greater or equal to 0 and lower than 3.");
+
+    return -1;
   }
 
   #ifdef WITH_BRAIN
@@ -1449,7 +1488,7 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
       show_error = false;
     }
   }
-  else if (user_options->backend_info == true)
+  else if (user_options->backend_info > 0)
   {
     if (user_options->hc_argc == 0)
     {
@@ -1670,7 +1709,7 @@ void user_options_session_auto (hashcat_ctx_t *hashcat_ctx)
       user_options->session = "stdout";
     }
 
-    if (user_options->backend_info == true)
+    if (user_options->backend_info > 0)
     {
       user_options->session = "backend_info";
     }
@@ -1723,13 +1762,13 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
     user_options->bitmap_max          = 1;
   }
 
-  if (user_options->hash_info       == true
-   || user_options->backend_info    == true
-   || user_options->keyspace        == true
-   || user_options->speed_only      == true
-   || user_options->progress_only   == true
-   || user_options->identify        == true
-   || user_options->usage           == true)
+  if (user_options->hash_info        == true
+   || user_options->keyspace         == true
+   || user_options->speed_only       == true
+   || user_options->progress_only    == true
+   || user_options->identify         == true
+   || user_options->usage            == true
+   || user_options->backend_info      > 0)
   {
     user_options->hwmon_disable       = true;
     user_options->left                = false;
@@ -1840,7 +1879,7 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
     }
   }
 
-  if (user_options->backend_info == true)
+  if (user_options->backend_info > 0)
   {
     user_options->backend_devices     = NULL;
     user_options->opencl_device_types = hcstrdup ("1,2,3");
@@ -1898,7 +1937,7 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
     {
 
     }
-    else if (user_options->backend_info == true)
+    else if (user_options->backend_info > 0)
     {
 
     }
@@ -2144,7 +2183,7 @@ void user_options_extra_init (hashcat_ctx_t *hashcat_ctx)
   {
 
   }
-  else if (user_options->backend_info == true)
+  else if (user_options->backend_info > 0)
   {
 
   }

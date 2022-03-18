@@ -38,7 +38,8 @@ static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
                                   | OPTS_TYPE_BINARY_HASHFILE_OPTIONAL
                                   | OPTS_TYPE_DEEP_COMP_KERNEL
                                   | OPTS_TYPE_COPY_TMPS
-                                  | OPTS_TYPE_POTFILE_NOPASS;
+                                  | OPTS_TYPE_POTFILE_NOPASS
+                                  | OPTS_TYPE_AUTODETECT_DISABLE;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "88f43854ae7b1624fc2ab7724859e795130f4843c7535729e819cf92f39535dc";
 static const char *ST_HASH        = "WPA*01*5ce7ebe97a1bbfeb2822ae627b726d5b*27462da350ac*accd10fb464e*686173686361742d6573736964***";
@@ -193,6 +194,7 @@ int module_hash_binary_parse (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
 
       memset (hashes_buf[hashes_cnt].esalt, 0, sizeof (wpa_t));
 
+      /* moved to module_hash_decode_postprocess()
       wpa_t *wpa = (wpa_t *) hashes_buf[hashes_cnt].esalt;
 
       wpa->message_pair_chgd = user_options->hccapx_message_pair_chgd;
@@ -200,6 +202,7 @@ int module_hash_binary_parse (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
 
       wpa->nonce_error_corrections_chgd = user_options->nonce_error_corrections_chgd;
       wpa->nonce_error_corrections      = user_options->nonce_error_corrections;
+      */
 
       hash_t *hash = &hashes_buf[hashes_cnt];
 
@@ -226,6 +229,7 @@ int module_hash_binary_parse (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
 
       memset (hashes_buf[hashes_cnt].esalt, 0, sizeof (wpa_t));
 
+      /* moved to module_hash_decode_postprocess()
       wpa_t *wpa = (wpa_t *) hashes_buf[hashes_cnt].esalt;
 
       wpa->message_pair_chgd = user_options->hccapx_message_pair_chgd;
@@ -233,6 +237,7 @@ int module_hash_binary_parse (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
 
       wpa->nonce_error_corrections_chgd = user_options->nonce_error_corrections_chgd;
       wpa->nonce_error_corrections      = user_options->nonce_error_corrections;
+      */
 
       hash_t *hash = &hashes_buf[hashes_cnt];
 
@@ -565,6 +570,24 @@ bool module_potfile_custom_check (MAYBE_UNUSED const hashconfig_t *hashconfig, M
     return false;
   }
 
+  kernel_param_t kernel_param;
+
+  kernel_param.bitmap_mask         = 0;
+  kernel_param.bitmap_shift1       = 0;
+  kernel_param.bitmap_shift2       = 0;
+  kernel_param.salt_pos_host       = 0;
+  kernel_param.loop_pos            = 0;
+  kernel_param.loop_cnt            = 0;
+  kernel_param.il_cnt              = 0;
+  kernel_param.digests_cnt         = 1;
+  kernel_param.digests_offset_host = 0;
+  kernel_param.combs_mode          = 0;
+  kernel_param.salt_repeat         = 0;
+  kernel_param.combs_mode          = 0;
+  kernel_param.salt_repeat         = 0;
+  kernel_param.pws_pos             = 0;
+  kernel_param.gid_max             = 1;
+
   m22001_aux
   (
     NULL,               // pws
@@ -591,19 +614,7 @@ bool module_potfile_custom_check (MAYBE_UNUSED const hashconfig_t *hashconfig, M
     NULL,               // d_extra1_buf
     NULL,               // d_extra2_buf
     NULL,               // d_extra3_buf
-    0,                  // bitmap_mask
-    0,                  // bitmap_shift1
-    0,                  // bitmap_shift2
-    0,                  // salt_pos
-    0,                  // loop_pos
-    0,                  // loop_cnt
-    0,                  // il_cnt
-    1,                  // digests_cnt
-    0,                  // digests_offset
-    0,                  // combs_mode
-    0,                  // salt_repeat
-    0,                  // pws_pos
-    1                   // gid_max
+    &kernel_param       // kernel_param
   );
 
   const bool r = (d_return_buf == 0) ? false : true;
@@ -705,7 +716,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
     // start normal parsing
 
-    token_t token;
+    hc_token_t token;
 
     token.token_cnt  = 4;
 
@@ -746,7 +757,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   // start normal parsing
 
-  token_t token;
+  hc_token_t token;
 
   token.token_cnt  = 9;
 
@@ -1044,6 +1055,9 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
     const u8 message_pair = hex_to_u8 (message_pair_pos);
 
+    wpa->message_pair = message_pair;
+
+    /* moved to module_hash_decode_postprocess()
     if (wpa->message_pair_chgd == true)
     {
       // we can filter some message types here
@@ -1072,6 +1086,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
         if (wpa->message_pair & (1 << 7))
         {
           // replaycount not checked, nc needed
+          wpa->nonce_error_corrections = NONCE_ERROR_CORRECTIONS; // temporary until architectural change done (module_hash_decode_postprocess?)
         }
         else
         {
@@ -1079,6 +1094,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
         }
       }
     }
+    */
 
     // now some optimization related to replay counter endianess
     // hcxtools has techniques to detect them
@@ -1272,6 +1288,53 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   return line_len;
 }
 
+int module_hash_decode_postprocess (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED void *digest_buf, MAYBE_UNUSED salt_t *salt, MAYBE_UNUSED void *esalt_buf, MAYBE_UNUSED void *hook_salt_buf, MAYBE_UNUSED hashinfo_t *hash_info, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
+{
+  wpa_t *wpa = (wpa_t *) esalt_buf;
+
+  wpa->message_pair_chgd = user_options->hccapx_message_pair_chgd;
+  //wpa->message_pair      = user_options->hccapx_message_pair;
+
+  wpa->nonce_error_corrections_chgd = user_options->nonce_error_corrections_chgd;
+  //wpa->nonce_error_corrections      = user_options->nonce_error_corrections;
+
+  if (wpa->message_pair_chgd == true)
+  {
+    // we can filter some message types here
+
+    if (user_options->hccapx_message_pair != (wpa->message_pair & 0x7f)) return (PARSER_HCCAPX_MESSAGE_PAIR);
+  }
+
+  if (wpa->nonce_error_corrections_chgd == true)
+  {
+    wpa->nonce_error_corrections = user_options->nonce_error_corrections;
+  }
+  else
+  {
+    wpa->nonce_error_corrections = NONCE_ERROR_CORRECTIONS;
+
+    if (wpa->message_pair & (1 << 4))
+    {
+      // ap-less attack detected, nc not needed
+
+      wpa->nonce_error_corrections = 0;
+    }
+    else
+    {
+      if (wpa->message_pair & (1 << 7))
+      {
+        // replaycount not checked, nc needed
+      }
+      else
+      {
+        wpa->nonce_error_corrections = 0;
+      }
+    }
+  }
+
+  return (PARSER_OK);
+}
+
 void module_init (module_ctx_t *module_ctx)
 {
   module_ctx->module_context_size             = MODULE_CONTEXT_SIZE_CURRENT;
@@ -1299,6 +1362,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_hash_binary_count        = module_hash_binary_count;
   module_ctx->module_hash_binary_parse        = module_hash_binary_parse;
   module_ctx->module_hash_binary_save         = module_hash_binary_save;
+  module_ctx->module_hash_decode_postprocess  = module_hash_decode_postprocess;
   module_ctx->module_hash_decode_potfile      = module_hash_decode_potfile;
   module_ctx->module_hash_decode_zero_hash    = MODULE_DEFAULT;
   module_ctx->module_hash_decode              = module_hash_decode;

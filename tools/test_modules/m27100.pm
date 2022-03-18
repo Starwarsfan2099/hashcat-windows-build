@@ -12,7 +12,7 @@ use Digest::HMAC qw (hmac hmac_hex);
 use Digest::MD5  qw (md5);
 use Encode       qw (encode);
 
-sub module_constraints { [[32, 32], [-1, -1], [-1, -1], [-1, -1], [-1, -1]] } 
+sub module_constraints { [[32, 32], [-1, -1], [-1, -1], [-1, -1], [-1, -1]] }
 
 sub module_generate_hash
 {
@@ -87,4 +87,3 @@ sub random_client_challenge
 }
 
 1;
-
