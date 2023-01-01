@@ -21,10 +21,12 @@ static const u32   HASH_CATEGORY  = HASH_CATEGORY_CRYPTOCURRENCY_WALLET;
 static const char *HASH_NAME      = "Exodus Desktop Wallet (scrypt)";
 static const u64   KERN_TYPE      = 28200;
 static const u32   OPTI_TYPE      = OPTI_TYPE_ZERO_BYTE;
-static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
+static const u64   OPTS_TYPE      = OPTS_TYPE_STOCK_MODULE
+                                  | OPTS_TYPE_PT_GENERATE_LE
                                   | OPTS_TYPE_MP_MULTI_DISABLE
                                   | OPTS_TYPE_NATIVE_THREADS
-                                  | OPTS_TYPE_LOOP_PREPARE;
+                                  | OPTS_TYPE_LOOP_PREPARE
+                                  | OPTS_TYPE_SELF_TEST_DISABLE;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "hashcat";
 static const char *ST_HASH        = "EXODUS:16384:8:1:IYkXZgFETRmFp4wQXyP8XMe3LtuOw8wMdLcBVQ+9YWE=:lq0W9ekN5sC0O7Xw:UD4a6mUUhkTbQtGWitXHZUg0pQ4RHI6W/KUyYE95m3k=:ZuNQckXOtr4r21x+DT1zpQ==";
@@ -70,6 +72,13 @@ u32 module_kernel_loops_max (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_
   const u32 kernel_loops_max = 1024;
 
   return kernel_loops_max;
+}
+
+u32 module_kernel_threads_max (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
+{
+  const u32 kernel_threads_max = 32;
+
+  return kernel_threads_max;
 }
 
 u32 module_pw_min (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
@@ -360,6 +369,8 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   memcpy (salt->salt_buf, tmp_buf, tmp_len);
 
+  for (int i = 0; i < 8; i++) salt->salt_buf[i] = byte_swap_32 (salt->salt_buf[i]);
+
   salt->salt_len = tmp_len;
 
   // iv
@@ -419,9 +430,13 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   // salt
 
+  u32 tmp_salt[8] = { 0 };
+
+  for (int i = 0; i < 8; i++) tmp_salt[i] = byte_swap_32 (salt->salt_buf[i]);
+
   char base64_salt[64];
 
-  int base64_salt_len = base64_encode (int_to_base64, (const u8 *) salt->salt_buf, salt->salt_len, (u8 *) base64_salt);
+  int base64_salt_len = base64_encode (int_to_base64, (const u8 *) tmp_salt, salt->salt_len, (u8 *) base64_salt);
 
   base64_salt[base64_salt_len] = 0;
 
@@ -476,44 +491,6 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   return line_len;
 }
 
-/*
-
-Find the right -n value for your GPU:
-=====================================
-
-1. For example, to find the value for 28200, first create a valid hash for 28200 as follows:
-
-$ ./hashcat --example-hashes -m 28200 | grep Example.Hash | grep -v Format | cut -b 25- > tmp.hash.28200
-
-2. Now let it iterate through all -n values to a certain point. In this case, I'm using 200, but in general it's a value that is at least twice that of the multiprocessor. If you don't mind you can just leave it as it is, it just runs a little longer.
-
-$ export i=1; while [ $i -ne 201 ]; do echo $i; ./hashcat --quiet tmp.hash.28200 --keep-guessing --self-test-disable --markov-disable --restore-disable --outfile-autohex-disable --wordlist-autohex-disable --potfile-disable --logfile-disable --hwmon-disable --status --status-timer 1 --runtime 28 --machine-readable --optimized-kernel-enable --workload-profile 3 --hash-type 28200 --attack-mode 3 ?b?b?b?b?b?b?b --backend-devices 1 --force -n $i; i=$(($i+1)); done | tee x
-
-3. Determine the highest measured H/s speed. But don't just use the highest value. Instead, use the number that seems most stable, usually at the beginning.
-
-$ grep "$(printf 'STATUS\t3')" x | cut -f4 -d$'\t' | sort -n | tail
-
-4. To match the speed you have chosen to the correct value in the 'x' file, simply search for it in it. Then go up a little on the block where you found him. The value -n is the single value that begins before the block start. If you have multiple blocks at the same speed, choose the lowest value for -n
-
-*/
-
-const char *module_extra_tuningdb_block (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
-{
-  const char *extra_tuningdb_block =
-    "DEVICE_TYPE_CPU                                 *      28200    1       N       A\n"
-    "DEVICE_TYPE_GPU                                 *      28200    1       N       A\n"
-    "GeForce_GTX_980                                 *      28200    1      16       A\n"
-    "GeForce_GTX_1080                                *      28200    1      45       A\n"
-    "GeForce_RTX_2080_Ti                             *      28200    1      68       A\n"
-    "GeForce_RTX_3080                                *      28200    1      68       A\n"
-    "GeForce_RTX_3090                                *      28200    1      82       A\n"
-    "ALIAS_AMD_Vega64                                *      28200    1      60       A\n"
-    "ALIAS_AMD_RX6900XT                              *      28200    1      60       A\n"
-  ;
-
-  return extra_tuningdb_block;
-}
-
 void module_init (module_ctx_t *module_ctx)
 {
   module_ctx->module_context_size             = MODULE_CONTEXT_SIZE_CURRENT;
@@ -523,6 +500,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_benchmark_esalt          = MODULE_DEFAULT;
   module_ctx->module_benchmark_hook_salt      = MODULE_DEFAULT;
   module_ctx->module_benchmark_mask           = MODULE_DEFAULT;
+  module_ctx->module_benchmark_charset        = MODULE_DEFAULT;
   module_ctx->module_benchmark_salt           = MODULE_DEFAULT;
   module_ctx->module_build_plain_postprocess  = MODULE_DEFAULT;
   module_ctx->module_deep_comp_kernel         = MODULE_DEFAULT;
@@ -536,7 +514,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_esalt_size               = module_esalt_size;
   module_ctx->module_extra_buffer_size        = module_extra_buffer_size;
   module_ctx->module_extra_tmp_size           = module_extra_tmp_size;
-  module_ctx->module_extra_tuningdb_block     = module_extra_tuningdb_block;
+  module_ctx->module_extra_tuningdb_block     = MODULE_DEFAULT;
   module_ctx->module_forced_outfile_format    = MODULE_DEFAULT;
   module_ctx->module_hash_binary_count        = MODULE_DEFAULT;
   module_ctx->module_hash_binary_parse        = MODULE_DEFAULT;
@@ -568,7 +546,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_kernel_accel_min         = MODULE_DEFAULT;
   module_ctx->module_kernel_loops_max         = module_kernel_loops_max;
   module_ctx->module_kernel_loops_min         = module_kernel_loops_min;
-  module_ctx->module_kernel_threads_max       = MODULE_DEFAULT;
+  module_ctx->module_kernel_threads_max       = module_kernel_threads_max;
   module_ctx->module_kernel_threads_min       = MODULE_DEFAULT;
   module_ctx->module_kern_type                = module_kern_type;
   module_ctx->module_kern_type_dynamic        = MODULE_DEFAULT;

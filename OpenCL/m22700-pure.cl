@@ -346,15 +346,15 @@ KERNEL_FQ void m22700_init (KERN_ATTR_TMPS (scrypt_tmp_t))
 
   sha256_hmac_init_swap (&sha256_hmac_ctx, w, w_len);
 
-  u32 s0[4] = { 0 };
-  u32 s1[4] = { 0 };
-  u32 s2[4] = { 0 };
-  u32 s3[4] = { 0 };
+  u32 x0[4] = { 0 };
+  u32 x1[4] = { 0 };
+  u32 x2[4] = { 0 };
+  u32 x3[4] = { 0 };
 
-  s0[0] = MULTIBIT_S0;
-  s0[1] = MULTIBIT_S1;
+  x0[0] = MULTIBIT_S0;
+  x0[1] = MULTIBIT_S1;
 
-  sha256_hmac_update_64 (&sha256_hmac_ctx, s0, s1, s2, s3, 8);
+  sha256_hmac_update_64 (&sha256_hmac_ctx, x0, x1, x2, x3, 8);
 
   for (u32 i = 0, j = 1, k = 0; i < SCRYPT_CNT; i += 8, j += 1, k += 2)
   {
@@ -397,7 +397,7 @@ KERNEL_FQ void m22700_init (KERN_ATTR_TMPS (scrypt_tmp_t))
     digest[6] = sha256_hmac_ctx2.opad.h[6];
     digest[7] = sha256_hmac_ctx2.opad.h[7];
 
-    #if defined IS_CUDA
+    #if defined IS_CUDA || defined IS_HIP
     const uint4 tmp0 = make_uint4 (digest[0], digest[1], digest[2], digest[3]);
     const uint4 tmp1 = make_uint4 (digest[4], digest[5], digest[6], digest[7]);
     #else
@@ -425,7 +425,7 @@ KERNEL_FQ void m22700_init (KERN_ATTR_TMPS (scrypt_tmp_t))
 
     uint4 X[4];
 
-    #if defined IS_CUDA
+    #if defined IS_CUDA || defined IS_HIP
     X[0] = make_uint4 (T[0].x, T[1].y, T[2].z, T[3].w);
     X[1] = make_uint4 (T[1].x, T[2].y, T[3].z, T[0].w);
     X[2] = make_uint4 (T[2].x, T[3].y, T[0].z, T[1].w);
@@ -600,7 +600,7 @@ KERNEL_FQ void m22700_comp (KERN_ATTR_TMPS (scrypt_tmp_t))
 
     uint4 T[4];
 
-    #if defined IS_CUDA
+    #if defined IS_CUDA || defined IS_HIP
     T[0] = make_uint4 (X[0].x, X[3].y, X[2].z, X[1].w);
     T[1] = make_uint4 (X[1].x, X[0].y, X[3].z, X[2].w);
     T[2] = make_uint4 (X[2].x, X[1].y, X[0].z, X[3].w);

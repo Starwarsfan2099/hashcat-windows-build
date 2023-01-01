@@ -224,6 +224,18 @@ typedef enum status_rc
 
 } status_rc_t;
 
+typedef enum rc_final
+{
+  RC_FINAL_ERROR            = -1,
+  RC_FINAL_OK               = 0,
+  RC_FINAL_EXHAUSTED        = 1,
+  RC_FINAL_ABORT            = 2,
+  RC_FINAL_ABORT_CHECKPOINT = 3,
+  RC_FINAL_ABORT_RUNTIME    = 4,
+  RC_FINAL_ABORT_FINISH     = 5,
+
+} rc_final_t;
+
 typedef enum wl_mode
 {
   WL_MODE_NONE  = 0,
@@ -413,7 +425,7 @@ typedef enum opts_type
   OPTS_TYPE_PT_ALWAYS_ASCII   = (1ULL << 12),
   OPTS_TYPE_PT_ALWAYS_HEXIFY  = (1ULL << 13),
   OPTS_TYPE_PT_LM             = (1ULL << 14), // special handling: all lower, 7 max, ...
-  OPTS_TYPE_PT_HEX            = (1ULL << 15), // input wordlist (and masks!) are always in hex
+  OPTS_TYPE_PT_HEX            = (1ULL << 15), // input wordlist is always in hex
   OPTS_TYPE_ST_UTF16LE        = (1ULL << 16),
   OPTS_TYPE_ST_UTF16BE        = (1ULL << 17),
   OPTS_TYPE_ST_UPPER          = (1ULL << 18),
@@ -425,6 +437,7 @@ typedef enum opts_type
   OPTS_TYPE_ST_ADDBITS15      = (1ULL << 24),
   OPTS_TYPE_ST_HEX            = (1ULL << 25),
   OPTS_TYPE_ST_BASE64         = (1ULL << 26),
+  OPTS_TYPE_MT_HEX            = (1ULL << 27), // mask is always in hex
   OPTS_TYPE_HASH_COPY         = (1ULL << 28),
   OPTS_TYPE_HASH_SPLIT        = (1ULL << 29),
   OPTS_TYPE_LOOP_PREPARE      = (1ULL << 30), // a kernel which is called each time before _loop kernel started.
@@ -458,6 +471,7 @@ typedef enum opts_type
   OPTS_TYPE_POST_AMP_UTF16LE  = (1ULL << 55), // run the utf8 to utf16le conversion kernel after they have been processed from amplifiers
   OPTS_TYPE_AUTODETECT_DISABLE
                               = (1ULL << 56), // skip autodetect engine
+  OPTS_TYPE_STOCK_MODULE      = (1ULL << 57), // module included with hashcat default distribution
 
 } opts_type_t;
 
@@ -678,7 +692,7 @@ typedef enum user_options_defaults
   REMOVE_TIMER             = 60,
   RESTORE_DISABLE          = false,
   RESTORE                  = false,
-  RESTORE_TIMER            = 60,
+  RESTORE_TIMER            = 1,
   RP_GEN                   = 0,
   RP_GEN_FUNC_MAX          = 4,
   RP_GEN_FUNC_MIN          = 1,
@@ -842,6 +856,8 @@ typedef enum token_attr
   TOKEN_ATTR_VERIFY_BASE64A     = 1 <<  8,
   TOKEN_ATTR_VERIFY_BASE64B     = 1 <<  9,
   TOKEN_ATTR_VERIFY_BASE64C     = 1 << 10,
+  TOKEN_ATTR_VERIFY_BASE58      = 1 << 11,
+  TOKEN_ATTR_VERIFY_BECH32      = 1 << 12,
 
 } token_attr_t;
 
@@ -907,6 +923,8 @@ typedef struct hash
   void       *esalt;
   void       *hook_salt; // additional salt info only used by the hook (host)
   int         cracked;
+  int         cracked_pot;
+  int         cracked_zero;
   hashinfo_t *hash_info;
   char       *pw_buf;
   int         pw_len;
@@ -942,6 +960,8 @@ typedef struct hashes
   u32          digests_cnt;
   u32          digests_done;
   u32          digests_done_pot;
+  u32          digests_done_zero;
+  u32          digests_done_new;
   u32          digests_saved;
 
   void        *digests_buf;
@@ -972,6 +992,8 @@ typedef struct hashes
   salt_t      *st_salts_buf;
   void        *st_esalts_buf;
   void        *st_hook_salts_buf;
+
+  int          parser_token_length_cnt;
 
 } hashes_t;
 
@@ -1028,6 +1050,7 @@ typedef struct hashconfig
   const char *hash_name;
 
   const char *benchmark_mask;
+  const char *benchmark_charset;
 
   u32 kernel_accel_min;
   u32 kernel_accel_max;
@@ -1617,8 +1640,8 @@ typedef struct hc_device_param
 
   #if defined (__APPLE__)
 
-  int               mtl_major;
-  int               mtl_minor;
+  //int               mtl_major;
+  //int               mtl_minor;
 
   int               device_physical_location;
   int               device_location_number;
@@ -1832,6 +1855,7 @@ typedef struct backend_ctx
   bool                kernel_accel_warnings;
   bool                extra_size_warning;
   bool                mixed_warnings;
+  bool                self_test_warnings;
 
   // generic
 
@@ -2172,6 +2196,10 @@ typedef struct restore_ctx
   char   *new_restore_file;
 
   restore_data_t *rd;
+
+  u32  dicts_pos_prev;
+  u32  masks_pos_prev;
+  u64  words_cur_prev;
 
 } restore_ctx_t;
 
@@ -2635,7 +2663,10 @@ typedef struct hashcat_status
   int         digests_cnt;
   int         digests_done;
   int         digests_done_pot;
+  int         digests_done_zero;
+  int         digests_done_new;
   double      digests_percent;
+  double      digests_percent_new;
   int         salts_cnt;
   int         salts_done;
   double      salts_percent;
@@ -2793,11 +2824,11 @@ typedef struct hashlist_parse
 
 typedef struct event_ctx
 {
-  char   old_buf[MAX_OLD_EVENTS][HCBUFSIZ_SMALL];
+  char   old_buf[MAX_OLD_EVENTS][HCBUFSIZ_LARGE];
   size_t old_len[MAX_OLD_EVENTS];
   int    old_cnt;
 
-  char   msg_buf[HCBUFSIZ_SMALL];
+  char   msg_buf[HCBUFSIZ_LARGE];
   size_t msg_len;
   bool   msg_newline;
 
@@ -2826,6 +2857,7 @@ typedef struct module_ctx
   void       *(*module_benchmark_esalt)         (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
   void       *(*module_benchmark_hook_salt)     (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
   const char *(*module_benchmark_mask)          (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
+  const char *(*module_benchmark_charset)       (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
   salt_t     *(*module_benchmark_salt)          (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
   const char *(*module_deprecated_notice)       (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);
   u32         (*module_dgst_pos0)               (const hashconfig_t *, const user_options_t *, const user_options_extra_t *);

@@ -12,7 +12,7 @@
 #define IS_CUDA
 #elif defined __HIPCC__
 #define IS_HIP
-#elif defined __METAL_MACOS__
+#elif defined __METAL__ || defined __METAL_MACOS__
 #define IS_METAL
 #else
 #define IS_OPENCL
@@ -142,16 +142,19 @@ using namespace metal;
  * fast but pure kernels on rocm is a good example
  */
 
+#ifdef NO_INLINE
+#define HC_INLINE
+#else
+#define HC_INLINE inline static
+#endif
+
 #if defined IS_AMD && defined IS_GPU
-#define DECLSPEC inline static
+#define DECLSPEC HC_INLINE
 #elif defined IS_HIP
-#define DECLSPEC __device__
+#define DECLSPEC __device__ HC_INLINE
 #else
 #define DECLSPEC
 #endif
-
-#define HC_INLINE0 __attribute__ ((noinline))
-#define HC_INLINE1 __attribute__ ((inline))
 
 /**
  * AMD specific

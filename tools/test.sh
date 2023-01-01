@@ -5,7 +5,7 @@
 ## License.....: MIT
 ##
 
-OPTS="--quiet --potfile-disable --hwmon-disable"
+OPTS="--quiet --potfile-disable --hwmon-disable --logfile-disable"
 
 FORCE=0
 RUNTIME=400
@@ -13,19 +13,16 @@ RUNTIME=400
 TDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # List of TrueCrypt modes which have test containers
-TC_MODES="6211 6212 6213 6221 6222 6223 6231 6232 6233 6241 6242 6243"
+TC_MODES="6211 6212 6213 6221 6222 6223 6231 6232 6233 6241 6242 6243 29311 29312 29313 29321 29322 29323 29331 29332 29333 29341 29342 29343"
 
 # List of VeraCrypt modes which have test containers
-VC_MODES="13711 13712 13713 13721 13722 13723 13731 13732 13733 13741 13742 13743 13751 13752 13753 13761 13762 13763 13771 13772 13773 13781 13782 13783"
-
-# List of modes which either are OPTS_TYPE_PT_NEVERCRACK or produce collisions
-NEVER_CRACK="9720 9820 14900 18100"
+VC_MODES="13711 13712 13713 13721 13722 13723 13731 13732 13733 13741 13742 13743 13751 13752 13753 13761 13762 13763 13771 13772 13773 13781 13782 13783 29411 29412 29413 29421 29422 29423 29431 29432 29433 29441 29442 29443 29451 29452 29453 29461 29462 29463 29471 29472 29473 29481 29482 29483"
 
 # List of modes which return a different output hash format than the input hash format
 NOCHECK_ENCODING="16800 22000"
 
-# LUKS mode has test containers
-LUKS_MODE="14600"
+# List of LUKS modes which have test containers
+LUKS_MODES="14600 29511 29512 29513 29521 29522 29523 29531 29532 29533 29541 29542 29543"
 
 # Cryptoloop mode which have test containers
 CL_MODES="14511 14512 14513 14521 14522 14523 14531 14532 14533 14541 14542 14543 14551 14552 14553"
@@ -33,13 +30,19 @@ CL_MODES="14511 14512 14513 14521 14522 14523 14531 14532 14533 14541 14542 1454
 # missing hash types: 5200
 
 HASH_TYPES=$(ls "${TDIR}"/test_modules/*.pm | sed -E 's/.*m0*([0-9]+).pm/\1/')
-HASH_TYPES="${HASH_TYPES} ${TC_MODES} ${VC_MODES} ${LUKS_MODE} ${CL_MODES}"
+HASH_TYPES="${HASH_TYPES} ${TC_MODES} ${VC_MODES} ${LUKS_MODES} ${CL_MODES}"
 HASH_TYPES=$(echo -n "${HASH_TYPES}" | tr ' ' '\n' | sort -u -n | tr '\n' ' ')
 
 VECTOR_WIDTHS="1 2 4 8 16"
 
-HASHFILE_ONLY=$(grep -l OPTS_TYPE_BINARY_HASHFILE "${TDIR}"/../src/modules/module_*.c | sed -E 's/.*module_0*([0-9]+).c/\1/' | tr '\n' ' ')
-SLOW_ALGOS=$(grep -l ATTACK_EXEC_OUTSIDE_KERNEL "${TDIR}"/../src/modules/module_*.c | sed -E 's/.*module_0*([0-9]+).c/\1/' | tr '\n' ' ')
+KEEP_GUESSING=$(grep -l OPTS_TYPE_SUGGEST_KG       "${TDIR}"/../src/modules/module_*.c | sed -E 's/.*module_0*([0-9]+).c/\1/' | tr '\n' ' ')
+HASHFILE_ONLY=$(grep -l OPTS_TYPE_BINARY_HASHFILE  "${TDIR}"/../src/modules/module_*.c | sed -E 's/.*module_0*([0-9]+).c/\1/' | tr '\n' ' ')
+SLOW_ALGOS=$(   grep -l ATTACK_EXEC_OUTSIDE_KERNEL "${TDIR}"/../src/modules/module_*.c | sed -E 's/.*module_0*([0-9]+).c/\1/' | tr '\n' ' ')
+
+# fake slow algos, due to specific password pattern (e.g. ?d from "mask_3" is invalid):
+# ("only" drawback is that just -a 0 is tested with this workaround)
+
+SLOW_ALGOS="${SLOW_ALGOS} 28501 28502 28503 28504 28505 28506"
 
 OUTD="test_$(date +%s)"
 
@@ -182,7 +185,7 @@ function init()
     return 0
   fi
 
-  if [ "${hash_type}" -eq ${LUKS_MODE} ]; then
+  if is_in_array "${hash_type}" ${LUKS_MODES}; then
     which 7z &>/dev/null
     if [ $? -eq 1 ]; then
       echo "ATTENTION: 7z is missing. Skipping download and extract luks test files."
@@ -446,11 +449,13 @@ function status()
         ;;
 
       1)
-        if ! is_in_array "${hash_type}" ${NEVER_CRACK_ALGOS}; then
-           echo "password not found, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
-           e_nf=$((e_nf + 1))
-        fi
+        # next check should not be needed anymore (NEVER_CRACK with exit code EXHAUSTED):
+        # if is_in_array "${hash_type}" ${KEEP_GUESSING_ALGOS}; then
+        #   return
+        # fi
 
+        echo "password not found, cmdline : ${CMD}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+        e_nf=$((e_nf + 1))
         ;;
 
       4)
@@ -460,7 +465,7 @@ function status()
         ;;
 
       10)
-        if is_in_array "${hash_type}" ${NEVER_CRACK_ALGOS}; then
+        if is_in_array "${hash_type}" ${KEEP_GUESSING_ALGOS}; then
           return
         fi
 
@@ -2681,6 +2686,9 @@ function truecrypt_test()
   tcMode=$2
   CMD="unset"
 
+  mkdir -p ${OUTD}/tc_tests
+  chmod u+x "${TDIR}/truecrypt2hashcat.py"
+
   case $hashType in
 
     6211)
@@ -2832,6 +2840,186 @@ function truecrypt_test()
           ;;
       esac
       ;;
+
+    29311)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29311 '${OUTD}/tc_tests/hashcat_ripemd160_aes.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_serpent.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29311 '${OUTD}/tc_tests/hashcat_ripemd160_serpent.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_twofish.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29311 '${OUTD}/tc_tests/hashcat_ripemd160_twofish.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29312)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29312 '${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_serpent-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29312 '${OUTD}/tc_tests/hashcat_ripemd160_serpent-aes.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29312 '${OUTD}/tc_tests/hashcat_ripemd160_twofish-serpent.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29313)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29313 '${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish-serpent.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_serpent-twofish-aes.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_serpent-twofish-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29313 '${OUTD}/tc_tests/hashcat_ripemd160_serpent-twofish-aes.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29321)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_aes.tc\" > ${OUTD}/tc_tests/hashcat_sha512_aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29321 '${OUTD}/tc_tests/hashcat_sha512_aes.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_serpent.tc\" > ${OUTD}/tc_tests/hashcat_sha512_serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29321 '${OUTD}/tc_tests/hashcat_sha512_serpent.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_twofish.tc\" > ${OUTD}/tc_tests/hashcat_sha512_twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29321 '${OUTD}/tc_tests/hashcat_sha512_twofish.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29322)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_aes-twofish.tc\" > ${OUTD}/tc_tests/hashcat_sha512_aes-twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29322 '${OUTD}/tc_tests/hashcat_sha512_aes-twofish.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_serpent-aes.tc\" > ${OUTD}/tc_tests/hashcat_sha512_serpent-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29322 '${OUTD}/tc_tests/hashcat_sha512_serpent-aes.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_sha512_twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29322 '${OUTD}/tc_tests/hashcat_sha512_twofish-serpent.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29323)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_aes-twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_sha512_aes-twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29323 '${OUTD}/tc_tests/hashcat_sha512_aes-twofish-serpent.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_sha512_serpent-twofish-aes.tc\" > ${OUTD}/tc_tests/hashcat_sha512_serpent-twofish-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29323 '${OUTD}/tc_tests/hashcat_sha512_serpent-twofish-aes.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29331)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_aes.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29331 '${OUTD}/tc_tests/hashcat_whirlpool_aes.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_serpent.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29331 '${OUTD}/tc_tests/hashcat_whirlpool_serpent.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_twofish.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29331 '${OUTD}/tc_tests/hashcat_whirlpool_twofish.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29332)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_aes-twofish.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29332 '${OUTD}/tc_tests/hashcat_whirlpool_aes-twofish.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_serpent-aes.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_serpent-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29332 '${OUTD}/tc_tests/hashcat_whirlpool_serpent-aes.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29332 '${OUTD}/tc_tests/hashcat_whirlpool_twofish-serpent.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29333)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_aes-twofish-serpent.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_aes-twofish-serpent.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29333 '${OUTD}/tc_tests/hashcat_whirlpool_aes-twofish-serpent.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_whirlpool_serpent-twofish-aes.tc\" > ${OUTD}/tc_tests/hashcat_whirlpool_serpent-twofish-aes.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29333 '${OUTD}/tc_tests/hashcat_whirlpool_serpent-twofish-aes.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29341)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29341 '${OUTD}/tc_tests/hashcat_ripemd160_aes_boot.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_serpent_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_serpent_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29341 '${OUTD}/tc_tests/hashcat_ripemd160_serpent_boot.hash' hashca?l"
+          ;;
+        2)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_twofish_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_twofish_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29341 '${OUTD}/tc_tests/hashcat_ripemd160_twofish_boot.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29342)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29342 '${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish_boot.hash' hashca?l"
+          ;;
+        1)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_serpent-aes_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_serpent-aes_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29342 '${OUTD}/tc_tests/hashcat_ripemd160_serpent-aes_boot.hash' hashca?l"
+          ;;
+      esac
+      ;;
+
+    29343)
+      case $tcMode in
+        0)
+          eval \"${TDIR}/truecrypt2hashcat.py\" \"${TDIR}/tc_tests/hashcat_ripemd160_aes-twofish-serpent_boot.tc\" > ${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish-serpent_boot.hash
+          CMD="./${BIN} ${OPTS} -a 3 -m 29343 '${OUTD}/tc_tests/hashcat_ripemd160_aes-twofish-serpent_boot.hash' hashca?l"
+          ;;
+      esac
+      ;;
   esac
 
   if [ ${#CMD} -gt 5 ]; then
@@ -2871,7 +3059,7 @@ function truecrypt_test()
 }
 
 # Compose and execute hashcat command on a VeraCrypt test container
-# Must not be called for hash types other than 137XY
+# Must not be called for hash types other than 137XY/294XY
 # $1: cipher variation, can be 0-6
 function veracrypt_test()
 {
@@ -2922,7 +3110,19 @@ function veracrypt_test()
   # The hash-cipher combination might be invalid (e.g. RIPEMD-160 + Kuznyechik)
   [ -f "${filename}" ] || return
 
-  CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} '${filename}' hashc?lt"
+  case "${hash_type:0:3}" in
+    137)
+      CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} '${filename}' hashc?lt"
+      ;;
+
+    294)
+      mkdir -p ${OUTD}/vc_tests
+      chmod u+x "${TDIR}/veracrypt2hashcat.py"
+
+      eval \"${TDIR}/veracrypt2hashcat.py\" \"${TDIR}/vc_tests/hashcat_${hash_function}_${cipher_cascade}.vc\" > ${OUTD}/vc_tests/hashcat_${hash_function}_${cipher_cascade}.hash
+      CMD="./${BIN} ${OPTS} -a 3 -m ${hash_type} '${OUTD}/vc_tests/hashcat_${hash_function}_${cipher_cascade}.hash' hashc?lt"
+      ;;
+  esac
 
   echo "> Testing hash type ${hash_type} with attack mode 0, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Cipher ${cipher_cascade}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
 
@@ -2970,17 +3170,223 @@ function luks_test()
     attackType=3
   fi
 
+  mkdir -p "${OUTD}/luks_tests"
+  chmod u+x "${TDIR}/luks2hashcat.py"
+
+  for luksMode in "cbc-essiv" "cbc-plain64" "xts-plain64"; do
+    for luksKeySize in "128" "256" "512"; do
+      CMD="unset"
+
+      # filter out not supported combinations:
+
+      case "${luksKeySize}" in
+        128)
+          case "${luksMode}" in
+            cbc-essiv|cbc-plain64)
+            ;;
+            *)
+              continue
+            ;;
+          esac
+        ;;
+        256)
+          case "${luksMode}" in
+            cbc-essiv|cbc-plain64|xts-plain64)
+            ;;
+            *)
+              continue
+            ;;
+          esac
+        ;;
+        512)
+          case "${luksMode}" in
+            xts-plain64)
+            ;;
+            *)
+              continue
+            ;;
+          esac
+        ;;
+      esac
+
+      case $hashType in
+        29511)
+          luksHash="sha1"
+          luksCipher="aes"
+          ;;
+
+        29512)
+          luksHash="sha1"
+          luksCipher="serpent"
+          ;;
+
+        29513)
+          luksHash="sha1"
+          luksCipher="twofish"
+          ;;
+
+        29521)
+          luksHash="sha256"
+          luksCipher="aes"
+          ;;
+
+        29522)
+          luksHash="sha256"
+          luksCipher="serpent"
+          ;;
+
+        29523)
+          luksHash="sha256"
+          luksCipher="twofish"
+          ;;
+
+        29531)
+          luksHash="sha512"
+          luksCipher="aes"
+          ;;
+
+        29532)
+          luksHash="sha512"
+          luksCipher="serpent"
+          ;;
+
+        29533)
+          luksHash="sha512"
+          luksCipher="twofish"
+          ;;
+
+        29541)
+          luksHash="ripemd160"
+          luksCipher="aes"
+          ;;
+
+        29542)
+          luksHash="ripemd160"
+          luksCipher="serpent"
+          ;;
+
+        29543)
+          luksHash="ripemd160"
+          luksCipher="twofish"
+          ;;
+
+      esac
+
+      luksMainMask="?l"
+      luksMask="${luksMainMask}"
+
+      # for combination or hybrid attacks
+      luksPassPartFile1="${OUTD}/${hashType}_dict1"
+      luksPassPartFile2="${OUTD}/${hashType}_dict2"
+
+      luksContainer="${TDIR}/luks_tests/hashcat_${luksHash}_${luksCipher}_${luksMode}_${luksKeySize}.luks"
+      luksHashFile="${OUTD}/luks_tests/hashcat_${luksHash}_${luksCipher}_${luksMode}_${luksKeySize}.hash"
+
+      case $attackType in
+        0)
+          CMD="./${BIN} ${OPTS} -a 0 -m ${hashType} '${luksHashFile}' '${TDIR}/luks_tests/pw'"
+          ;;
+        1)
+          luksPassPart1Len=$((${#LUKS_PASSWORD} / 2))
+          luksPassPart2Start=$((luksPassPart1Len + 1))
+
+          echo "${LUKS_PASSWORD}" | cut -c-${luksPassPart1Len} > "${luksPassPartFile1}" 2>/dev/null
+          echo "${LUKS_PASSWORD}" | cut -c${luksPassPart2Start}- > "${luksPassPartFile2}" 2>/dev/null
+
+          CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} '${luksHashFile}' ${luksPassPartFile1} ${luksPassPartFile2}"
+          ;;
+        3)
+          luksMaskFixedLen=$((${#LUKS_PASSWORD} - 1))
+
+          luksMask="$(echo "${LUKS_PASSWORD}" | cut -c-${luksMaskFixedLen} 2>/dev/null)"
+          luksMask="${luksMask}${luksMainMask}"
+
+          CMD="./${BIN} ${OPTS} -a 3 -m ${hashType} '${luksHashFile}' ${luksMask}"
+          ;;
+        6)
+          luksPassPart1Len=$((${#LUKS_PASSWORD} - 1))
+
+          echo "${LUKS_PASSWORD}" | cut -c-${luksPassPart1Len} > "${luksPassPartFile1}" 2>/dev/null
+
+          CMD="./${BIN} ${OPTS} -a 6 -m ${hashType} '${luksHashFile}' ${luksPassPartFile1} ${luksMask}"
+          ;;
+        7)
+          echo "${LUKS_PASSWORD}" | cut -c2- > "${luksPassPartFile1}" 2>/dev/null
+
+          CMD="./${BIN} ${OPTS} -a 7 -m ${hashType} '${luksHashFile}' ${luksMask} ${luksPassPartFile1}"
+          ;;
+      esac
+
+      eval \"${TDIR}/luks2hashcat.py\" \"${luksContainer}\" > "${luksHashFile}"
+
+      luksMode="${luksHash}-${luksCipher}-${luksMode}-${luksKeySize}"
+
+      if [ -n "${CMD}" ] && [ ${#CMD} -gt 5 ]; then
+        echo "> Testing hash type ${hashType} with attack mode ${attackType}, markov ${MARKOV}, single hash, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Luks-Mode ${luksMode}" >> "${OUTD}/logfull.txt" 2>> "${OUTD}/logfull.txt"
+
+        if [ -f "${luks_first_test_file}" ]; then
+          output=$(eval ${CMD} 2>&1)
+          ret=${?}
+
+          echo "${output}" >> "${OUTD}/logfull.txt"
+        else
+          ret=30
+        fi
+
+        e_ce=0
+        e_rs=0
+        e_to=0
+        e_nf=0
+        e_nm=0
+        cnt=0
+
+        status ${ret}
+
+        cnt=1
+
+        msg="OK"
+
+        if [ "${e_ce}" -ne 0 ]; then
+          msg="Compare Error"
+        elif [ "${e_rs}" -ne 0 ]; then
+          msg="Skip"
+        elif [ "${e_nf}" -ne 0 ] || [ "${e_nm}" -ne 0 ]; then
+          msg="Error"
+        elif [ "${e_to}" -ne 0 ]; then
+          msg="Warning"
+        fi
+
+        echo "[ ${OUTD} ] [ Type ${hash_type}, Attack ${attackType}, Mode single, Device-Type ${DEVICE_TYPE}, Kernel-Type ${KERNEL_TYPE}, Vector-Width ${VECTOR}, Luks-Mode ${luksMode} ] > $msg : ${e_nf}/${cnt} not found, ${e_nm}/${cnt} not matched, ${e_to}/${cnt} timeout, ${e_rs}/${cnt} skipped"
+
+        status ${ret}
+      fi
+    done
+  done
+}
+
+function luks_legacy_test()
+{
+  hashType=$1
+  attackType=$2
+
+  # if -m all was set let us default to -a 3 only. You could specify the attack type directly, e.g. -m 0
+  # the problem with defaulting to all=0,1,3,6,7 is that it could take way too long
+
+  if [ "${attackType}" -eq 65535 ]; then
+    attackType=3
+  fi
+
   #LUKS_HASHES="sha1 sha256 sha512 ripemd160 whirlpool"
   LUKS_HASHES="sha1 sha256 sha512 ripemd160"
   LUKS_CIPHERS="aes serpent twofish"
-  LUKS_MODES="cbc-essiv cbc-plain64 xts-plain64"
+  LUKS_CIPHER_MODES="cbc-essiv cbc-plain64 xts-plain64"
   LUKS_KEYSIZES="128 256 512"
 
   LUKS_PASSWORD=$(cat "${TDIR}/luks_tests/pw" 2>/dev/null)
 
   for luks_h in ${LUKS_HASHES}; do
     for luks_c in ${LUKS_CIPHERS}; do
-      for luks_m in ${LUKS_MODES}; do
+      for luks_m in ${LUKS_CIPHER_MODES}; do
         for luks_k in ${LUKS_KEYSIZES}; do
 
           CMD=""
@@ -3446,7 +3852,7 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
     # generate random test entry
     if [ "${HT}" -eq 65535 ]; then
       for TMP_HT in ${HASH_TYPES}; do
-        if [ "${TMP_HT}" -ne ${LUKS_MODE} ]; then
+        if ! is_in_array "${TMP_HT}" ${LUKS_MODES}; then
           if ! is_in_array "${TMP_HT}" ${TC_MODES}; then
             if ! is_in_array "${TMP_HT}" ${VC_MODES}; then
               if ! is_in_array "${TMP_HT}" ${CL_MODES}; then
@@ -3462,7 +3868,7 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
           continue
         fi
 
-        if [ "${TMP_HT}" -ne ${LUKS_MODE} ]; then
+        if ! is_in_array "${TMP_HT}" ${LUKS_MODES}; then
           # Exclude TrueCrypt and VeraCrypt testing modes
           if ! is_in_array "${TMP_HT}" ${TC_MODES}; then
             if ! is_in_array "${TMP_HT}" ${VC_MODES}; then
@@ -3487,7 +3893,7 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
   IFS=';' read -ra PASS_ONLY <<< "${HASHFILE_ONLY} ${NOCHECK_ENCODING}"
   IFS=';' read -ra TIMEOUT_ALGOS <<< "${SLOW_ALGOS}"
 
-  IFS=';' read -ra NEVER_CRACK_ALGOS <<< "${NEVER_CRACK}"
+  IFS=';' read -ra KEEP_GUESSING_ALGOS <<< "${KEEP_GUESSING}"
 
   # for these particular algos we need to save the output to a temporary file
   IFS=';' read -ra FILE_BASED_ALGOS <<< "${HASHFILE_ONLY}"
@@ -3612,9 +4018,15 @@ if [ "${PACKAGE}" -eq 0 ] || [ -z "${PACKAGE_FOLDER}" ]; then
               truecrypt_test "${hash_type}" 0
               truecrypt_test "${hash_type}" 1
               truecrypt_test "${hash_type}" 2
-            elif [ "${hash_type}" -eq ${LUKS_MODE} ]; then
+            elif is_in_array "${hash_type}" ${LUKS_MODES}; then
               # run luks tests
-              luks_test "${hash_type}" ${ATTACK}
+              if [ ${hash_type} -eq 14600 ]; then
+                # for legacy mode
+                luks_legacy_test "${hash_type}" ${ATTACK}
+              else
+                # for new modes
+                luks_test "${hash_type}" ${ATTACK}
+              fi
             else
               # run attack mode 0 (stdin)
               if [ ${ATTACK} -eq 65535 ] || [ ${ATTACK} -eq 0 ]; then attack_0; fi
@@ -3684,7 +4096,7 @@ if [ "${PACKAGE}" -eq 1 ]; then
     copy_cl_dir=1
   else
     for TMP_HT in $(seq "${HT_MIN}" "${HT_MAX}"); do
-      if [ "${TMP_HT}" -eq "${LUKS_MODE}" ]; then
+      if is_in_array "${TMP_HT}" "${LUKS_MODES}"; then
         copy_luks_dir=1
       elif is_in_array "${TMP_HT}" ${TC_MODES}; then
         copy_tc_dir=1
@@ -3758,15 +4170,15 @@ if [ "${PACKAGE}" -eq 1 ]; then
     HT_PACKAGED=${HT_MIN}-${HT_MAX}
   fi
 
-  HASH_TYPES_PACKAGED=$(   echo "${HASH_TYPES}"    | tr '\n' ' ' | sed 's/ $//')
-  HASHFILE_ONLY_PACKAGED=$(echo "${HASHFILE_ONLY}" | tr '\n' ' ' | sed 's/ $//')
-  NEVER_CRACK_PACKAGED=$(  echo "${NEVER_CRACK}"   | tr '\n' ' ' | sed 's/ $//')
-  SLOW_ALGOS_PACKAGED=$(   echo "${SLOW_ALGOS}"    | tr '\n' ' ' | sed 's/ $//')
+  HASH_TYPES_PACKAGED=$(   echo "${HASH_TYPES}"    | tr '\n' ' ' | sed 's/ *$//')
+  HASHFILE_ONLY_PACKAGED=$(echo "${HASHFILE_ONLY}" | tr '\n' ' ' | sed 's/ *$//')
+  KEEP_GUESSING_PACKAGED=$(echo "${KEEP_GUESSING}" | tr '\n' ' ' | sed 's/ *$//')
+  SLOW_ALGOS_PACKAGED=$(   echo "${SLOW_ALGOS}"    | tr '\n' ' ' | sed 's/ *$//')
 
   sed "${SED_IN_PLACE}" -e 's/^\(PACKAGE_FOLDER\)=""/\1="$( echo "${BASH_SOURCE[0]}" | sed \"s!test.sh\\$!!\" )"/' \
     -e "s/^\(HASH_TYPES\)=\$(.*/\1=\"${HASH_TYPES_PACKAGED}\"/" \
     -e "s/^\(HASHFILE_ONLY\)=\$(.*/\1=\"${HASHFILE_ONLY_PACKAGED}\"/" \
-    -e "s/^\(NEVER_CRACK\)=\$(.*/\1=\"${NEVER_CRACK_PACKAGED}\"/" \
+    -e "s/^\(KEEP_GUESSING\)=\$(.*/\1=\"${KEEP_GUESSING_PACKAGED}\"/" \
     -e "s/^\(SLOW_ALGOS\)=\$(.*/\1=\"${SLOW_ALGOS_PACKAGED}\"/" \
     -e "s/^\(HT\)=0/\1=${HT_PACKAGED}/" \
     -e "s/^\(MODE\)=0/\1=${MODE}/" \

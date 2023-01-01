@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Utility to extract Bitwarden hash for hashcat from Google Chrome / Firefox / Desktop local data"""
 
 #
@@ -124,7 +125,7 @@ def process_file(filename, legacy = False):
             # Firefox
             data = process_sqlite(filename)
         elif filename.endswith(".json"):
-            # json - Desktop 
+            # json - Desktop
             with open(filename, "rb") as f:
                 data = f.read()
                 data = process_json(data)

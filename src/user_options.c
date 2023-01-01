@@ -717,7 +717,7 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     return -1;
   }
 
-  if (user_options->runtime_chgd == true && user_options->loopback == true)
+  if (user_options->limit_chgd == true && user_options->loopback == true)
   {
     event_log_error (hashcat_ctx, "Combining --limit with --loopback is not allowed.");
 
@@ -1107,21 +1107,11 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     }
   }
 
-  if (user_options->debug_mode > 4)
+  if (user_options->debug_mode > 5)
   {
     event_log_error (hashcat_ctx, "Invalid --debug-mode value specified.");
 
     return -1;
-  }
-
-  if (user_options->debug_file != NULL)
-  {
-    if (user_options->debug_mode < 1)
-    {
-      event_log_error (hashcat_ctx, "Parameter --debug-file requires --debug-mode.");
-
-      return -1;
-    }
   }
 
   if (user_options->induction_dir != NULL)
@@ -1289,6 +1279,16 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     if (strlen (user_options->markov_hcstat2) == 0)
     {
       event_log_error (hashcat_ctx, "Invalid --markov-hcstat2 value - must not be empty.");
+
+      return -1;
+    }
+  }
+
+  if (user_options->markov_threshold != 0) // is 0 by default
+  {
+    if ((user_options->attack_mode == ATTACK_MODE_STRAIGHT) || (user_options->attack_mode == ATTACK_MODE_COMBI) || (user_options->attack_mode == ATTACK_MODE_ASSOCIATION))
+    {
+      event_log_error (hashcat_ctx, "Option --markov-threshold is not allowed in combination with --attack mode %d", user_options->attack_mode);
 
       return -1;
     }

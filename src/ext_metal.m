@@ -16,6 +16,7 @@
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
 
+/*
 typedef NS_ENUM(NSUInteger, hc_mtlFeatureSet)
 {
   MTL_FEATURESET_MACOS_GPUFAMILY_1_V1 = 10000,
@@ -25,6 +26,7 @@ typedef NS_ENUM(NSUInteger, hc_mtlFeatureSet)
   MTL_FEATURESET_MACOS_GPUFAMILY_2_V1 = 10005,
 
 } metalDeviceFeatureSet_macOS_t;
+*/
 
 typedef NS_ENUM(NSUInteger, hc_mtlLanguageVersion)
 {
@@ -197,6 +199,8 @@ static int hc_mtlBuildOptionsToDict (void *hashcat_ctx, const char *build_option
   {
     NSString *path_key = @"INCLUDE_PATH";
     NSString *path_value = [NSString stringWithCString: include_path encoding: NSUTF8StringEncoding];
+    // Include path may contain spaces, escape them with a backslash
+    path_value = [path_value stringByReplacingOccurrencesOfString:@" " withString:@"\\ "];
 
     [build_options_dict setObject:path_value forKey:path_key];
   }
@@ -408,6 +412,7 @@ int hc_mtlDeviceGetAttribute (void *hashcat_ctx, int *pi, metalDeviceAttribute_t
       *pi = 32;
       break;
 
+    /* unused and deprecated
     case MTL_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR:
       *pi = 0;
 
@@ -424,7 +429,9 @@ int hc_mtlDeviceGetAttribute (void *hashcat_ctx, int *pi, metalDeviceAttribute_t
       }
 
       break;
+    */
 
+    /* unused and deprecated
     case MTL_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR:
       *pi = 0;
 
@@ -441,6 +448,7 @@ int hc_mtlDeviceGetAttribute (void *hashcat_ctx, int *pi, metalDeviceAttribute_t
       }
 
       break;
+    */
 
     case MTL_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK:
       // M1 max is 1024

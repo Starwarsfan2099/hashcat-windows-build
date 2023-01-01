@@ -1237,6 +1237,14 @@ int input_tokenizer (const u8 *input_buf, const int input_len, hc_token_t *token
     {
       if (is_valid_base64c_string (token->buf[token_idx], token->len[token_idx]) == false) return (PARSER_TOKEN_ENCODING);
     }
+    if (token->attr[token_idx] & TOKEN_ATTR_VERIFY_BASE58)
+    {
+      if (is_valid_base58_string (token->buf[token_idx], token->len[token_idx]) == false) return (PARSER_TOKEN_ENCODING);
+    }
+    if (token->attr[token_idx] & TOKEN_ATTR_VERIFY_BECH32)
+    {
+      if (is_valid_bech32_string (token->buf[token_idx], token->len[token_idx]) == false) return (PARSER_TOKEN_ENCODING);
+    }
   }
 
   return PARSER_OK;
@@ -1389,3 +1397,34 @@ bool is_apple_silicon (void)
 }
 
 #endif // __APPLE__
+
+char *file_to_buffer (const char *filename)
+{
+  HCFILE fp;
+
+  if (hc_fopen (&fp, filename, "r") == true)
+  {
+    struct stat st;
+
+    memset (&st, 0, sizeof (st));
+
+    if (hc_fstat (&fp, &st))
+    {
+      hc_fclose (&fp);
+
+      return NULL;
+    }
+
+    char *buffer = malloc (st.st_size + 1);
+
+    const size_t nread = hc_fread (buffer, 1, st.st_size, &fp);
+
+    hc_fclose (&fp);
+
+    buffer[nread] = 0;
+
+    return buffer;
+  }
+
+  return NULL;
+}

@@ -900,6 +900,20 @@ int status_get_digests_done_pot (const hashcat_ctx_t *hashcat_ctx)
   return hashes->digests_done_pot;
 }
 
+int status_get_digests_done_zero (const hashcat_ctx_t *hashcat_ctx)
+{
+  const hashes_t *hashes = hashcat_ctx->hashes;
+
+  return hashes->digests_done_zero;
+}
+
+int status_get_digests_done_new (const hashcat_ctx_t *hashcat_ctx)
+{
+  const hashes_t *hashes = hashcat_ctx->hashes;
+
+  return hashes->digests_done_new;
+}
+
 int status_get_digests_cnt (const hashcat_ctx_t *hashcat_ctx)
 {
   const hashes_t *hashes = hashcat_ctx->hashes;
@@ -914,6 +928,15 @@ double status_get_digests_percent (const hashcat_ctx_t *hashcat_ctx)
   if (hashes->digests_cnt == 0) return 0;
 
   return ((double) hashes->digests_done / (double) hashes->digests_cnt) * 100;
+}
+
+double status_get_digests_percent_new (const hashcat_ctx_t *hashcat_ctx)
+{
+  const hashes_t *hashes = hashcat_ctx->hashes;
+
+  if (hashes->digests_cnt == 0) return 0;
+
+  return ((double) hashes->digests_done_new / (double) hashes->digests_cnt) * 100;
 }
 
 int status_get_salts_done (const hashcat_ctx_t *hashcat_ctx)
@@ -1729,7 +1752,7 @@ char *status_get_cpt (const hashcat_ctx_t *hashcat_ctx)
   }
   else if ((cpt_ctx->cpt_start + (60 * 60)) < now)
   {
-    hc_asprintf (&cpt, "CUR:%u,%u,N/A AVG:%.2f,%.2f,N/a (Min,Hour,Day)",
+    hc_asprintf (&cpt, "CUR:%u,%u,N/A AVG:%.2f,%.2f,N/A (Min,Hour,Day)",
       cpt_cur_min,
       cpt_cur_hour,
       cpt_avg_min,
@@ -1922,7 +1945,6 @@ char *status_get_brain_rx_all (const hashcat_ctx_t *hashcat_ctx)
   format_speed_display_1k (brain_rx_all, display, HCBUFSIZ_TINY);
 
   return display;
-
 }
 
 char *status_get_brain_link_send_bytes_dev (const hashcat_ctx_t *hashcat_ctx, const int backend_devices_idx)

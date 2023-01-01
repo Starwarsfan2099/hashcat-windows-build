@@ -7,11 +7,11 @@
            |_____|     /___________/     |_____|  /_____/        /_______|
                  :                             :                         :
 
-hashcat v6.2.5
+hashcat v6.2.6
 ==============
 
-AMD GPUs on Linux require "AMD ROCm" (4.5 or later)
-AMD GPUs on Windows require "AMD Radeon Adrenalin 2020 Edition" (21.2.1 or later)
+AMD GPUs on Linux require "AMDGPU" (21.50 or later) and "ROCm" (5.0 or later)
+AMD GPUs on Windows require "AMD Adrenalin Edition" (Adrenalin 22.5.1 or later)
 Intel CPUs require "OpenCL Runtime for Intel Core and Intel Xeon Processors" (16.1.1 or later)
 NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or later)
 
@@ -86,10 +86,12 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - md5(md5($pass).md5($salt))
 - md5(md5(md5($pass)))
 - md5(sha1($pass))
+- md5(sha1($pass).$salt)
 - md5(sha1($pass).md5($pass).sha1($pass))
 - md5(sha1($salt).md5($pass))
 - md5(strtoupper(md5($pass)))
 - md5(utf16le($pass).$salt)
+- md5(md5($salt).md5(md5($pass)))
 - sha1($pass.$salt)
 - sha1($salt.$pass)
 - sha1($salt.$pass.$salt)
@@ -124,6 +126,8 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - sha512($salt.$pass)
 - sha512($salt.utf16le($pass))
 - sha512(utf16le($pass).$salt)
+- BLAKE2b-512($pass.$salt)
+- BLAKE2b-512($salt.$pass)
 - HMAC-MD5 (key = $pass)
 - HMAC-MD5 (key = $salt)
 - HMAC-SHA1 (key = $pass)
@@ -136,6 +140,8 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - HMAC-Streebog-256 (key = $salt), big-endian
 - HMAC-Streebog-512 (key = $pass), big-endian
 - HMAC-Streebog-512 (key = $salt), big-endian
+- HMAC-RIPEMD160 (key = $pass)
+- HMAC-RIPEMD160 (key = $salt)
 - CRC32
 - CRC32C
 - CRC64Jones
@@ -157,6 +163,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - scrypt
 - phpass
 - TACACS+
+- DANE RFC7929/RFC8162 SHA2-256
 - SIP digest authentication (MD5)
 - IKE-PSK MD5
 - IKE-PSK SHA1
@@ -187,6 +194,8 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - NetNTLMv1 / NetNTLMv1+ESS (NT)
 - NetNTLMv2
 - NetNTLMv2 (NT)
+- Amazon AWS4-HMAC-SHA256
+- Flask Session Cookie
 - iSCSI CHAP authentication, MD5(CHAP)
 - RACF
 - AIX {smd5}
@@ -204,6 +213,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - BSDi Crypt, Extended DES
 - NTLM
 - Radmin2
+- Radmin3
 - Samsung Android Password/PIN
 - Windows Hello PIN/Password
 - Windows Phone 8+ PIN/password
@@ -239,6 +249,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - MongoDB ServerKey SCRAM-SHA-256
 - PostgreSQL
 - PostgreSQL CRAM (MD5)
+- PostgreSQL SCRAM-SHA-256
 - Oracle H: Type (Oracle 7+)
 - Oracle S: Type (Oracle 11+)
 - Oracle T: Type (Oracle 12+)
@@ -321,6 +332,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Password Safe v3
 - LastPass + LastPass sniffed
 - KeePass 1 (AES/Twofish) and KeePass 2 (AES)
+- KeePass 1 (AES/Twofish) and KeePass 2 (AES) - keyfile only mode
 - Bitwarden
 - Ansible Vault
 - Mozilla key3.db
@@ -393,9 +405,13 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Telegram Desktop >= v2.1.14 (PBKDF2-HMAC-SHA512)
 - Telegram Mobile App Passcode (SHA256)
 - Skype
+- Anope IRC Services (enc_sha256)
 - MetaMask Wallet
 - BitShares v0.x - sha512(sha512_bin(pass))
 - Bitcoin/Litecoin wallet.dat
+- Bitcoin WIF private key (P2PKH)
+- Bitcoin WIF private key (P2SH(P2WPKH))
+- Bitcoin WIF private key (P2WPKH, Bech32)
 - Electrum Wallet (Salt-Type 1-3)
 - Electrum Wallet (Salt-Type 4)
 - Electrum Wallet (Salt-Type 5)
@@ -410,6 +426,12 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - MultiBit Classic .wallet (scrypt)
 - MultiBit HD (scrypt)
 - Exodus Desktop Wallet (scrypt)
+- Terra Station Wallet (AES256-CBC(PBKDF2($pass)))
+- Bisq .wallet (scrypt)
+- ENCsecurity Datavault (PBKDF2/no keychain)
+- ENCsecurity Datavault (PBKDF2/keychain)
+- ENCsecurity Datavault (MD5/no keychain)
+- ENCsecurity Datavault (MD5/keychain)
 
 ##
 ## Attack-Modes

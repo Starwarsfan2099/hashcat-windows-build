@@ -17,6 +17,8 @@
 #include "timer.h"
 #include "terminal.h"
 
+static const size_t MAXIMUM_EXAMPLE_HASH_LENGTH = 200;
+
 static const size_t TERMINAL_LINE_LENGTH = 79;
 
 static const char *const PROMPT_ACTIVE = "[s]tatus [p]ause [b]ypass [c]heckpoint [f]inish [q]uit => ";
@@ -637,6 +639,7 @@ void hash_info_single_json (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *us
   if (hashconfig_init (hashcat_ctx) == 0)
   {
     hashconfig_t *hashconfig = hashcat_ctx->hashconfig;
+    module_ctx_t *module_ctx = hashcat_ctx->module_ctx;
 
     printf ("\"%u\": { ", hashconfig->hash_mode);
     printf ("\"name\": \"%s\", ", hashconfig->hash_name);
@@ -645,6 +648,13 @@ void hash_info_single_json (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *us
 
     printf ("\"password_len_min\": %u, ", hashconfig->pw_min);
     printf ("\"password_len_max\": %u, ", hashconfig->pw_max);
+
+    printf ("\"is_deprecated\": %s, ", (module_ctx->module_deprecated_notice != MODULE_DEFAULT) ? "true" : "false");
+
+    if (module_ctx->module_deprecated_notice != MODULE_DEFAULT) {
+      const char *deprecated_notice = module_ctx->module_deprecated_notice (hashconfig, hashcat_ctx->user_options, user_options_extra);
+      printf ("\"deprecated_notice\": \"%s\", ", deprecated_notice);
+    }
 
     printf ("\"is_salted\": %s, ", (hashconfig->is_salted == true) ? "true" : "false");
 
@@ -748,9 +758,19 @@ void hash_info_single_json (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *us
       printf ("\"benchmark_mask\": \"%s\", ", "N/A");
     }
 
+    if (hashconfig->benchmark_charset != NULL)
+    {
+      printf ("\"benchmark_charset1\": \"%s\", ", hashconfig->benchmark_charset);
+    }
+    else
+    {
+      printf ("\"benchmark_charset1\": \"%s\", ", "N/A");
+    }
+
     printf ("\"autodetect_enabled\": %s, ", (hashconfig->opts_type & OPTS_TYPE_AUTODETECT_DISABLE) ? "false" : "true");
     printf ("\"self_test_enabled\": %s, ", (hashconfig->opts_type & OPTS_TYPE_SELF_TEST_DISABLE) ? "false" : "true");
     printf ("\"potfile_enabled\": %s, ", (hashconfig->opts_type & OPTS_TYPE_POTFILE_NOPASS) ? "false" : "true");
+    printf ("\"custom_plugin\": %s, ", (hashconfig->opts_type & OPTS_TYPE_STOCK_MODULE) ? "false" : "true");
 
     if (hashconfig->opts_type & OPTS_TYPE_PT_ALWAYS_ASCII)
     {
@@ -825,11 +845,24 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_op
         {
           event_log_info (hashcat_ctx, "  Example.Hash.Format.: hex-encoded (binary file only)");
         }
-        event_log_info (hashcat_ctx, "  Example.Hash........: %s", hashconfig->st_hash);
       }
       else
       {
         event_log_info (hashcat_ctx, "  Example.Hash.Format.: plain");
+      }
+
+      if (strlen (hashconfig->st_hash) > MAXIMUM_EXAMPLE_HASH_LENGTH)
+      {
+        char *st_hash = hcstrdup (hashconfig->st_hash);
+
+        compress_terminal_line_length (st_hash, 24, 5);
+
+        event_log_info (hashcat_ctx, "  Example.Hash........: %s [Truncated, use --mach for full length]", st_hash);
+
+        hcfree (st_hash);
+      }
+      else
+      {
         event_log_info (hashcat_ctx, "  Example.Hash........: %s", hashconfig->st_hash);
       }
 
@@ -891,9 +924,19 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_op
       event_log_info (hashcat_ctx, "  Benchmark.Mask......: N/A");
     }
 
+    if (hashconfig->benchmark_charset != NULL)
+    {
+      event_log_info (hashcat_ctx, "  Benchmark.Charset1..: %s", hashconfig->benchmark_charset);
+    }
+    // else // almost always empty
+    // {
+    //   event_log_info (hashcat_ctx, "  Benchmark.Charset1..: N/A");
+    // }
+
     event_log_info (hashcat_ctx, "  Autodetect.Enabled..: %s", (hashconfig->opts_type & OPTS_TYPE_AUTODETECT_DISABLE) ? "No" : "Yes");
     event_log_info (hashcat_ctx, "  Self.Test.Enabled...: %s", (hashconfig->opts_type & OPTS_TYPE_SELF_TEST_DISABLE) ? "No" : "Yes");
     event_log_info (hashcat_ctx, "  Potfile.Enabled.....: %s", (hashconfig->opts_type & OPTS_TYPE_POTFILE_NOPASS) ? "No" : "Yes");
+    event_log_info (hashcat_ctx, "  Custom.Plugin.......: %s", (hashconfig->opts_type & OPTS_TYPE_STOCK_MODULE) ? "No" : "Yes");
 
     if (hashconfig->opts_type & OPTS_TYPE_PT_ALWAYS_ASCII)
     {
@@ -1050,7 +1093,8 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
     event_log_info (hashcat_ctx, "Install.Dir..: %s", folder_config->install_dir);
     event_log_info (hashcat_ctx, "Profile.Dir..: %s", folder_config->profile_dir);
     event_log_info (hashcat_ctx, "Cache.Dir....: %s", folder_config->cache_dir);
-    event_log_info (hashcat_ctx, "Session.Dir..: %s", folder_config->session_dir);
+    // uninitialized at this point, for instance if the user uses --session
+    //event_log_info (hashcat_ctx, "Session.Dir..: %s", folder_config->session_dir);
     event_log_info (hashcat_ctx, "Shared.Dir...: %s", folder_config->shared_dir);
     event_log_info (hashcat_ctx, "CL.Inc.Path..: %s", folder_config->cpath_real);
 
@@ -1177,18 +1221,10 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
     event_log_info (hashcat_ctx, NULL);
 
     int metal_devices_cnt = backend_ctx->metal_devices_cnt;
-    int metal_runtimeVersion = backend_ctx->metal_runtimeVersion;
+
     char *metal_runtimeVersionStr = backend_ctx->metal_runtimeVersionStr;
 
-    if (metal_runtimeVersionStr != NULL)
-    {
-      event_log_info (hashcat_ctx, "Metal.Version.: %s", metal_runtimeVersionStr);
-    }
-    else
-    {
-      event_log_info (hashcat_ctx, "Metal.Version.: %u", metal_runtimeVersion);
-    }
-
+    event_log_info (hashcat_ctx, "Metal.Version.: %s", metal_runtimeVersionStr);
     event_log_info (hashcat_ctx, NULL);
 
     for (int metal_devices_idx = 0; metal_devices_idx < metal_devices_cnt; metal_devices_idx++)
@@ -1198,8 +1234,8 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
       const hc_device_param_t *device_param = backend_ctx->devices_param + backend_devices_idx;
 
       int   device_id                 = device_param->device_id;
-      int   device_mtl_maj            = device_param->mtl_major;
-      int   device_mtl_min            = device_param->mtl_minor;
+      //int   device_mtl_maj            = device_param->mtl_major;
+      //int   device_mtl_min            = device_param->mtl_minor;
       int   device_max_transfer_rate  = device_param->device_max_transfer_rate;
       int   device_physical_location  = device_param->device_physical_location;
       int   device_location_number    = device_param->device_location_number;
@@ -1249,6 +1285,7 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
         default:                              event_log_info (hashcat_ctx, "  Phys.Location..: N/A"); break;
       }
 
+      /*
       if (device_mtl_maj > 0 && device_mtl_min > 0)
       {
         event_log_info (hashcat_ctx, "  Feature.Set....: macOS GPU Family %u v%u", device_mtl_maj, device_mtl_min);
@@ -1257,6 +1294,7 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
       {
         event_log_info (hashcat_ctx, "  Feature.Set....: N/A");
       }
+      */
 
       event_log_info (hashcat_ctx, "  Registry.ID....: %u", device_registryID);
 
@@ -1498,6 +1536,7 @@ void backend_info_compact (hashcat_ctx_t *hashcat_ctx)
   if (backend_ctx->mtl)
   {
     int metal_devices_cnt    = backend_ctx->metal_devices_cnt;
+
     char *metal_runtimeVersionStr = backend_ctx->metal_runtimeVersionStr;
 
     size_t len = event_log_info (hashcat_ctx, "METAL API (Metal %s)", metal_runtimeVersionStr);
@@ -1754,8 +1793,6 @@ void json_encode (char *text, char *escaped)
 
 void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
 {
-  const hwmon_ctx_t *hwmon_ctx = hashcat_ctx->hwmon_ctx;
-
   const status_ctx_t *status_ctx = hashcat_ctx->status_ctx;
 
   hashcat_status_t *hashcat_status = (hashcat_status_t *) hcmalloc (sizeof (hashcat_status_t));
@@ -1784,11 +1821,25 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
     end = time_now + sec_etc;
   }
 
-  printf ("{ \"session\": \"%s\",", hashcat_status->session);
+  char *session_json_encoded = (char *) hcmalloc (strlen (hashcat_status->session) * 2);
+
+  json_encode (hashcat_status->session, session_json_encoded);
+
+  printf ("{ \"session\": \"%s\",", session_json_encoded);
+
+  hcfree (session_json_encoded);
+
   printf (" \"guess\": {");
+
   if (hashcat_status->guess_base)
   {
-    printf (" \"guess_base\": \"%s\",", hashcat_status->guess_base);
+    char *guess_base_json_encoded = (char *) hcmalloc (strlen (hashcat_status->guess_base) * 2);
+
+    json_encode (hashcat_status->guess_base, guess_base_json_encoded);
+
+    printf (" \"guess_base\": \"%s\",", guess_base_json_encoded);
+
+    hcfree (guess_base_json_encoded);
   }
   else
   {
@@ -1802,7 +1853,13 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
 
   if (hashcat_status->guess_mod)
   {
-    printf (" \"guess_mod\": \"%s\",", hashcat_status->guess_mod);
+    char *guess_mod_json_encoded = (char *) hcmalloc (strlen (hashcat_status->guess_mod) * 2);
+
+    json_encode (hashcat_status->guess_mod, guess_mod_json_encoded);
+
+    printf (" \"guess_mod\": \"%s\",", guess_mod_json_encoded);
+
+    hcfree (guess_mod_json_encoded);
   }
   else
   {
@@ -1820,9 +1877,13 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
    * As the hash target can contain the hash (in case of a single attacked hash), especially
    * some salts can contain chars which need to be escaped to not break the JSON encoding.
    */
+
   char *target_json_encoded = (char *) hcmalloc (strlen (hashcat_status->hash_target) * 2);
+
   json_encode (hashcat_status->hash_target, target_json_encoded);
+
   printf (" \"target\": \"%s\",", target_json_encoded);
+
   hcfree (target_json_encoded);
 
   printf (" \"progress\": [%" PRIu64 ", %" PRIu64 "],", hashcat_status->progress_cur_relative_skip, hashcat_status->progress_end_relative_skip);
@@ -1832,8 +1893,6 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
   printf (" \"rejected\": %" PRIu64 ",", hashcat_status->progress_rejected);
   printf (" \"devices\": [");
 
-  int device_num = 0;
-
   for (int device_id = 0; device_id < hashcat_status->device_info_cnt; device_id++)
   {
     const device_info_t *device_info = hashcat_status->device_info_buf + device_id;
@@ -1841,7 +1900,7 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
     if (device_info->skipped_dev == true) continue;
     if (device_info->skipped_warning_dev == true) continue;
 
-    if (device_num != 0)
+    if (device_id != 0)
     {
       printf (",");
     }
@@ -1849,8 +1908,11 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
     printf (" { \"device_id\": %u,", device_id + 1);
 
     char *device_name_json_encoded = (char *) hcmalloc (strlen (device_info->device_name) * 2);
+
     json_encode (device_info->device_name, device_name_json_encoded);
+
     printf (" \"device_name\": \"%s\",", device_name_json_encoded);
+
     hcfree (device_name_json_encoded);
 
     const char *device_type_desc = ((device_info->device_type & CL_DEVICE_TYPE_CPU) ? "CPU" :
@@ -1859,19 +1921,21 @@ void status_display_status_json (hashcat_ctx_t *hashcat_ctx)
 
     printf (" \"speed\": %" PRIu64 ",", (u64) (device_info->hashes_msec_dev * 1000));
 
-    if (hwmon_ctx->enabled == true)
-    {
-      const int temp = hm_get_temperature_with_devices_idx (hashcat_ctx, device_id);
-
-      printf (" \"temp\": %d,", temp);
-    }
-
+    const int temp = hm_get_temperature_with_devices_idx (hashcat_ctx, device_id);
     const int util = hm_get_utilization_with_devices_idx (hashcat_ctx, device_id);
+    const int fanspeed = hm_get_fanspeed_with_devices_idx (hashcat_ctx, device_id);
+    const int corespeed = hm_get_corespeed_with_devices_idx (hashcat_ctx, device_id);
+    const int memoryspeed = hm_get_memoryspeed_with_devices_idx (hashcat_ctx, device_id);
+    const int buslanes = hm_get_buslanes_with_devices_idx (hashcat_ctx, device_id);
 
-    printf (" \"util\": %d }", util);
-
-    device_num++;
+    printf (" \"temp\": %d,", temp);
+    printf (" \"util\": %d,", util);
+    printf (" \"fanspeed\": %d,", fanspeed);
+    printf (" \"corespeed\": %d,", corespeed);
+    printf (" \"memoryspeed\": %d,", memoryspeed);
+    printf (" \"buslanes\": %d }", buslanes);
   }
+
   printf (" ],");
   printf (" \"time_start\": %" PRIu64 ",", (u64) status_ctx->runtime_start);
   printf (" \"estimated_stop\": %" PRIu64 " }", (u64) end);
@@ -2299,91 +2363,33 @@ void status_display (hashcat_ctx_t *hashcat_ctx)
       "Speed.#*.........: %9sH/s",
       hashcat_status->speed_sec_all);
   }
-  if (hashcat_status->digests_done_pot > 0)
+
+  if (hashcat_status->salts_cnt > 1)
   {
-    if (hashcat_status->salts_cnt > 1)
-    {
-      const int digests_new = hashcat_status->digests_done - hashcat_status->digests_done_pot;
-      const double digests_new_perc = (double) digests_new / (double) hashcat_status->digests_cnt * 100;
-
-      if (digests_new > 1)
-      {
-        event_log_info (hashcat_ctx,
-          "Recovered.Total..: %u/%u (%.2f%%) Digests, %u/%u (%.2f%%) Salts",
-          hashcat_status->digests_done,
-          hashcat_status->digests_cnt,
-          hashcat_status->digests_percent,
-          hashcat_status->salts_done,
-          hashcat_status->salts_cnt,
-          hashcat_status->salts_percent);
-        event_log_info (hashcat_ctx,
-          "Recovered.New....: %u/%u (%.2f%%) Digests",
-          digests_new,
-          hashcat_status->digests_cnt,
-          digests_new_perc);
-      }
-      else
-      {
-        event_log_info (hashcat_ctx,
-          "Recovered.Total..: %u/%u (%.2f%%) Digests, %u/%u (%.2f%%) Salts",
-          hashcat_status->digests_done,
-          hashcat_status->digests_cnt,
-          hashcat_status->digests_percent,
-          hashcat_status->salts_done,
-          hashcat_status->salts_cnt,
-          hashcat_status->salts_percent);
-      }
-    }
-    else
-    {
-      const int digests_new = hashcat_status->digests_done - hashcat_status->digests_done_pot;
-      const double digests_new_perc = (double) digests_new / (double) hashcat_status->digests_cnt * 100;
-
-      if (digests_new > 1)
-      {
-        event_log_info (hashcat_ctx,
-          "Recovered.Total..: %u/%u (%.2f%%) Digests",
-          hashcat_status->digests_done,
-          hashcat_status->digests_cnt,
-          hashcat_status->digests_percent);
-        event_log_info (hashcat_ctx,
-          "Recovered.New....: %u/%u (%.2f%%) Digests",
-          digests_new,
-          hashcat_status->digests_cnt,
-          digests_new_perc);
-      }
-      else
-      {
-        event_log_info (hashcat_ctx,
-          "Recovered.Total..: %u/%u (%.2f%%) Digests",
-          hashcat_status->digests_done,
-          hashcat_status->digests_cnt,
-          hashcat_status->digests_percent);
-      }
-    }
+    event_log_info (hashcat_ctx,
+      "Recovered........: %u/%u (%.2f%%) Digests (total), %u/%u (%.2f%%) Digests (new), %u/%u (%.2f%%) Salts",
+      hashcat_status->digests_done,
+      hashcat_status->digests_cnt,
+      hashcat_status->digests_percent,
+      hashcat_status->digests_done_new,
+      hashcat_status->digests_cnt,
+      hashcat_status->digests_percent_new,
+      hashcat_status->salts_done,
+      hashcat_status->salts_cnt,
+      hashcat_status->salts_percent);
   }
   else
   {
-    if (hashcat_status->salts_cnt > 1)
-    {
-      event_log_info (hashcat_ctx,
-        "Recovered.Total..: %u/%u (%.2f%%) Digests, %u/%u (%.2f%%) Salts",
-        hashcat_status->digests_done,
-        hashcat_status->digests_cnt,
-        hashcat_status->digests_percent,
-        hashcat_status->salts_done,
-        hashcat_status->salts_cnt,
-        hashcat_status->salts_percent);
-    }
-    else
-    {
-      event_log_info (hashcat_ctx,
-        "Recovered.Total..: %u/%u (%.2f%%) Digests",
-        hashcat_status->digests_done,
-        hashcat_status->digests_cnt,
-        hashcat_status->digests_percent);
-    }
+    event_log_info (hashcat_ctx,
+      "Recovered........: %u/%u (%.2f%%) Digests (total), %u/%u (%.2f%%) Digests (new)",
+      hashcat_status->digests_done,
+      hashcat_status->digests_cnt,
+      hashcat_status->digests_percent,
+      hashcat_status->digests_done_new,
+      hashcat_status->digests_cnt,
+      hashcat_status->digests_percent_new);
   }
+
   if (hashcat_status->digests_cnt > 1000)
   {
     const int    digests_remain         = hashcat_status->digests_cnt - hashcat_status->digests_done;

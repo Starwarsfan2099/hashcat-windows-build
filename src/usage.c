@@ -57,7 +57,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   " -o, --outfile                  | File | Define outfile for recovered hash                    | -o outfile.txt",
   "     --outfile-format           | Str  | Outfile format to use, separated with commas         | --outfile-format=1,3",
   "     --outfile-autohex-disable  |      | Disable the use of $HEX[] in output plains           |",
-  "     --outfile-check-timer      | Num  | Sets seconds between outfile checks to X             | --outfile-check=30",
+  "     --outfile-check-timer      | Num  | Sets seconds between outfile checks to X             | --outfile-check-timer=30",
   "     --wordlist-autohex-disable |      | Disable the conversion of $HEX[] from the wordlist   |",
   " -p, --separator                | Char | Separator char for hashlists and outfile             | -p :",
   "     --stdout                   |      | Do not crack a hash, instead print candidates only   |",
@@ -73,7 +73,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "     --debug-mode               | Num  | Defines the debug mode (hybrid only by using rules)  | --debug-mode=4",
   "     --debug-file               | File | Output file for debugging rules                      | --debug-file=good.log",
   "     --induction-dir            | Dir  | Specify the induction directory to use for loopback  | --induction=inducts",
-  "     --outfile-check-dir        | Dir  | Specify the outfile directory to monitor for plains  | --outfile-check-dir=x",
+  "     --outfile-check-dir        | Dir  | Specify the directory to monitor 3rd party outfiles  | --outfile-check-dir=x",
   "     --logfile-disable          |      | Disable the logfile                                  |",
   "     --hccapx-message-pair      | Num  | Load only message pairs from hccapx matching X       | --hccapx-message-pair=2",
   "     --nonce-error-corrections  | Num  | The BF size range to replace AP's nonce last bytes   | --nonce-error-corrections=16",
@@ -145,8 +145,8 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "",
   "- [ Hash modes ] -",
   "",
-  "      # | Name                                                | Category",
-  "  ======+=====================================================+======================================",
+  "      # | Name                                                       | Category",
+  "  ======+============================================================+======================================",
   NULL
 };
 
@@ -181,6 +181,7 @@ static const char *const USAGE_BIG_POST_HASHMODES[] =
   "  2 | Original-Word",
   "  3 | Original-Word:Finding-Rule",
   "  4 | Original-Word:Finding-Rule:Processed-Word",
+  "  5 | Original-Word:Finding-Rule:Processed-Word:Wordlist",
   "",
   "- [ Attack Modes ] -",
   "",
@@ -344,7 +345,7 @@ void usage_big_print (hashcat_ctx_t *hashcat_ctx)
 
   for (int i = 0; i < usage_sort_cnt; i++)
   {
-    printf ("%7u | %-51s | %s", usage_sort_buf[i].hash_mode, usage_sort_buf[i].hash_name, strhashcategory (usage_sort_buf[i].hash_category));
+    printf ("%7u | %-58s | %s", usage_sort_buf[i].hash_mode, usage_sort_buf[i].hash_name, strhashcategory (usage_sort_buf[i].hash_category));
 
     fwrite (EOL, strlen (EOL), 1, stdout);
   }

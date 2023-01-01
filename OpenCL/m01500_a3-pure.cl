@@ -1889,6 +1889,8 @@ KERNEL_FQ void m01500_tm (KERN_ATTR_TM)
 {
   const u64 gid = get_global_id (0);
 
+  // if (gid >= GID_CNT) return;
+
   const u32 block = gid / 32;
   const u32 slice = gid % 32;
 
@@ -1909,6 +1911,12 @@ KERNEL_FQ void m01500_tm (KERN_ATTR_TM)
     hc_atomic_or (&words_buf_b[block].b[j + 5], (((w0s >> (i + 2)) & 1) << slice));
     hc_atomic_or (&words_buf_b[block].b[j + 6], (((w0s >> (i + 1)) & 1) << slice));
   }
+}
+
+#ifndef DESCRYPT_SALT
+
+KERNEL_FQ void m01500_sxx (KERN_ATTR_BITSLICE ())
+{
 }
 
 KERNEL_FQ void m01500_mxx (KERN_ATTR_BITSLICE ())
@@ -2283,6 +2291,8 @@ KERNEL_FQ void m01500_mxx (KERN_ATTR_BITSLICE ())
     }
   }
 }
+
+#else
 
 KERNEL_FQ void m01500_sxx (KERN_ATTR_BITSLICE ())
 {
@@ -2677,3 +2687,9 @@ KERNEL_FQ void m01500_sxx (KERN_ATTR_BITSLICE ())
     #endif
   }
 }
+
+KERNEL_FQ void m01500_mxx (KERN_ATTR_BITSLICE ())
+{
+}
+
+#endif
