@@ -16,7 +16,7 @@ static const u32   DGST_POS0      = 0;
 static const u32   DGST_POS1      = 1;
 static const u32   DGST_POS2      = 2;
 static const u32   DGST_POS3      = 3;
-static const u32   DGST_SIZE      = DGST_SIZE_4_8;
+static const u32   DGST_SIZE      = DGST_SIZE_4_16;
 static const u32   HASH_CATEGORY  = HASH_CATEGORY_GENERIC_KDF;
 static const char *HASH_NAME      = "scrypt";
 static const u64   KERN_TYPE      = 8900;
@@ -271,41 +271,42 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   hc_token_t token;
 
+  memset (&token, 0, sizeof (hc_token_t));
+
   token.token_cnt  = 6;
 
   token.signatures_cnt    = 1;
   token.signatures_buf[0] = SIGNATURE_SCRYPT;
 
-  token.len_min[0] = 6;
-  token.len_max[0] = 6;
   token.sep[0]     = ':';
-  token.attr[0]    = TOKEN_ATTR_VERIFY_LENGTH
+  token.len[0]     = 6;
+  token.attr[0]    = TOKEN_ATTR_FIXED_LENGTH
                    | TOKEN_ATTR_VERIFY_SIGNATURE;
 
+  token.sep[1]     = ':';
   token.len_min[1] = 1;
   token.len_max[1] = 6;
-  token.sep[1]     = ':';
   token.attr[1]    = TOKEN_ATTR_VERIFY_LENGTH;
 
+  token.sep[2]     = ':';
   token.len_min[2] = 1;
   token.len_max[2] = 6;
-  token.sep[2]     = ':';
   token.attr[2]    = TOKEN_ATTR_VERIFY_LENGTH;
 
+  token.sep[3]     = ':';
   token.len_min[3] = 1;
   token.len_max[3] = 6;
-  token.sep[3]     = ':';
   token.attr[3]    = TOKEN_ATTR_VERIFY_LENGTH;
 
+  token.sep[4]     = ':';
   token.len_min[4] = 0;
   token.len_max[4] = 45;
-  token.sep[4]     = ':';
   token.attr[4]    = TOKEN_ATTR_VERIFY_LENGTH
                    | TOKEN_ATTR_VERIFY_BASE64A;
 
-  token.len_min[5] = 44;
-  token.len_max[5] = 44;
   token.sep[5]     = ':';
+  token.len_min[5] = 44;
+  token.len_max[5] = 88;
   token.attr[5]    = TOKEN_ATTR_VERIFY_LENGTH
                    | TOKEN_ATTR_VERIFY_BASE64A;
 
@@ -333,7 +334,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   const u8 *salt_pos = token.buf[4];
   const int salt_len = token.len[4];
 
-  u8 tmp_buf[33] = { 0 };
+  u8 tmp_buf[128] = { 0 };
 
   const int tmp_len = base64_decode (base64_to_int, (const u8 *) salt_pos, salt_len, tmp_buf);
 
@@ -348,22 +349,26 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   memset (tmp_buf, 0, sizeof (tmp_buf));
 
-  base64_decode (base64_to_int, (const u8 *) hash_pos, hash_len, tmp_buf);
+  const int digest_len = base64_decode (base64_to_int, (const u8 *) hash_pos, hash_len, tmp_buf);
 
-  memcpy (digest, tmp_buf, 32);
+  // digest_len should be safe because of 88 limit
+
+  memcpy (digest, tmp_buf, digest_len);
+
+  salt->salt_len_pc = digest_len;
 
   return (PARSER_OK);
 }
 
 int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const void *digest_buf, MAYBE_UNUSED const salt_t *salt, MAYBE_UNUSED const void *esalt_buf, MAYBE_UNUSED const void *hook_salt_buf, MAYBE_UNUSED const hashinfo_t *hash_info, char *line_buf, MAYBE_UNUSED const int line_size)
 {
-  char base64_salt[32] = { 0 };
+  char base64_salt[64] = { 0 };
 
   base64_encode (int_to_base64, (const u8 *) salt->salt_buf, salt->salt_len, (u8 *) base64_salt);
 
-  char base64_digest[64] = { 0 };
+  char base64_digest[128] = { 0 };
 
-  base64_encode (int_to_base64, (const u8 *) digest_buf, 32, (u8 *) base64_digest);
+  base64_encode (int_to_base64, (const u8 *) digest_buf, salt->salt_len_pc, (u8 *) base64_digest);
 
   const int line_len = snprintf (line_buf, line_size, "%s:%u:%u:%u:%s:%s",
     SIGNATURE_SCRYPT,
