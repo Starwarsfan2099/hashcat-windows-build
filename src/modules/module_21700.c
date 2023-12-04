@@ -68,6 +68,11 @@ static const char *SIGNATURE_ELECTRUM = "$electrum$4*";
 
 bool module_unstable_warning (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra, MAYBE_UNUSED const hc_device_param_t *device_param)
 {
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_INTEL_SDK)
+  {
+    return true;
+  }
+
   // AMD Radeon Pro W5700X, Metal.Version.: 261.13, compiler hangs
   if (device_param->is_metal == true)
   {
@@ -223,9 +228,9 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
 int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const void *digest_buf, MAYBE_UNUSED const salt_t *salt, MAYBE_UNUSED const void *esalt_buf, MAYBE_UNUSED const void *hook_salt_buf, MAYBE_UNUSED const hashinfo_t *hash_info, char *line_buf, MAYBE_UNUSED const int line_size)
 {
-  u32 *digest = (u32 *) digest_buf;
+  const u32 *digest = (const u32 *) digest_buf;
 
-  electrum_t *esalt = (electrum_t *) esalt_buf;
+  const electrum_t *esalt = (const electrum_t *) esalt_buf;
 
   // ephemeral pubkey:
 

@@ -1055,8 +1055,8 @@ int choose_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, 
     // - hooks can have a large influence depending on the OS.
     //   spawning threads and memory allocations take a lot of time on windows (compared to linux).
     // - the kernel execution can take shortcuts based on intermediate values
-    //   while these intermediate valus depend on input values.
-    // - if we meassure runtimes of different kernels to find out about their weightning
+    //   while these intermediate values depend on input values.
+    // - if we measure runtimes of different kernels to find out about their weightning
     //   we need to call them with real input values otherwise we miss the shortcuts inside the kernel.
     // - the problem is that these real input values could crack the hash which makes the chaos perfect.
     //
@@ -1589,7 +1589,7 @@ static void rebuild_pws_compressed_append (hc_device_param_t *device_param, cons
     const u32 dst_pw_len4_cnt = dst_pw_len4 / 4;
 
     pw_idx_dst->cnt = dst_pw_len4_cnt;
-    pw_idx_dst->len = src_len; // this is intenionally! src_len can not be dst_len, we dont want the kernel to think 0x80 is part of the password
+    pw_idx_dst->len = src_len; // this is intentionally! src_len can not be dst_len, we dont want the kernel to think 0x80 is part of the password
 
     u8 *dst = (u8 *) (tmp_pws_comp + pw_idx_dst->off);
 
@@ -2031,8 +2031,8 @@ int run_opencl_kernel_bzero (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *devi
 
     cl_kernel kernel = device_param->opencl_kernel_bzero;
 
-    if (hc_clSetKernelArg (hashcat_ctx, kernel, 0, sizeof (cl_mem),   (void *) &buf)    == -1) return -1;
-    if (hc_clSetKernelArg (hashcat_ctx, kernel, 1, sizeof (cl_ulong), (void *) &num16d) == -1) return -1;
+    if (hc_clSetKernelArg (hashcat_ctx, kernel, 0, sizeof (cl_mem),   &buf)    == -1) return -1;
+    if (hc_clSetKernelArg (hashcat_ctx, kernel, 1, sizeof (cl_ulong), &num16d) == -1) return -1;
 
     const size_t global_work_size[3] = { num_elements,   1, 1 };
     const size_t local_work_size[3]  = { kernel_threads, 1, 1 };
@@ -3512,7 +3512,7 @@ int run_cracker (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, co
     if (iconv_ctx == (iconv_t) -1) return -1;
   }
 
-  // find higest password length, this is for optimization stuff
+  // find highest password length, this is for optimization stuff
 
   u32 highest_pw_len = 0;
 
@@ -4396,19 +4396,15 @@ int backend_ctx_init (hashcat_ctx_t *hashcat_ctx)
       backend_ctx->rc_hiprtc_init = rc_hiprtc_init;
 
       hiprtc_close (hashcat_ctx);
+    }
 
+    if ((rc_hip_init == 0) && (rc_hiprtc_init == -1))
+    {
       #if defined (_WIN)
       event_log_warning (hashcat_ctx, "Support for HIPRTC was dropped by AMD Adrenalin Edition 22.7.1 and later.");
       event_log_warning (hashcat_ctx, "This is not a hashcat problem.");
       event_log_warning (hashcat_ctx, NULL);
-      event_log_warning (hashcat_ctx, "For details please read: https://github.com/hashcat/hashcat/issues/3501");
-      event_log_warning (hashcat_ctx, NULL);
-      event_log_warning (hashcat_ctx, "In order to make HIP work, you have two options:");
-      event_log_warning (hashcat_ctx, "- Install AMD Adrenalin version 22.5.1 EXACTLY");
-      event_log_warning (hashcat_ctx, "- Read the details from the above link for other workarounds");
-      event_log_warning (hashcat_ctx, NULL);
-      event_log_warning (hashcat_ctx, "You can also just stick to OpenCL support.");
-      event_log_warning (hashcat_ctx, "To do this, just use --backend-ignore-hip option to ignore HIP.");
+      event_log_warning (hashcat_ctx, "Please install the AMD HIP SDK");
       event_log_warning (hashcat_ctx, NULL);
       #endif
     }
@@ -4543,27 +4539,6 @@ int backend_ctx_init (hashcat_ctx_t *hashcat_ctx)
 
         mtl_close (hashcat_ctx);
       }
-      else
-      {
-        if (user_options->force == false)
-        {
-          // disable metal < 300
-
-          if (backend_ctx->metal_runtimeVersion < 300)
-          {
-            event_log_warning (hashcat_ctx, "Unsupported Apple Metal runtime version '%s' detected! Falling back to OpenCL...", backend_ctx->metal_runtimeVersionStr);
-            event_log_warning (hashcat_ctx, NULL);
-
-            rc_metal_init = -1;
-
-            backend_ctx->rc_metal_init = rc_metal_init;
-
-            backend_ctx->mtl = NULL;
-
-            mtl_close (hashcat_ctx);
-          }
-        }
-      }
     }
     else
     {
@@ -4613,7 +4588,7 @@ int backend_ctx_init (hashcat_ctx_t *hashcat_ctx)
       event_log_warning (hashcat_ctx, "  \"AMDGPU\" (21.50 or later) and \"ROCm\" (5.0 or later)");
       #elif defined (_WIN)
       event_log_warning (hashcat_ctx, "* AMD GPUs on Windows require this driver:");
-      event_log_warning (hashcat_ctx, "  \"AMD Adrenalin Edition\" (Adrenalin 22.5.1 exactly)");
+      event_log_warning (hashcat_ctx, "  \"AMD Adrenalin Edition\" (23.7.2 or later) and \"AMD HIP SDK\" (23.Q3 or later)");
       #endif
 
       event_log_warning (hashcat_ctx, "* Intel CPUs require this runtime:");
@@ -4957,7 +4932,7 @@ int backend_ctx_init (hashcat_ctx_t *hashcat_ctx)
     event_log_warning (hashcat_ctx, "  \"AMDGPU\" (21.50 or later) and \"ROCm\" (5.0 or later)");
     #elif defined (_WIN)
     event_log_warning (hashcat_ctx, "* AMD GPUs on Windows require this driver:");
-    event_log_warning (hashcat_ctx, "  \"AMD Adrenalin Edition\" (Adrenalin 22.5.1 exactly)");
+    event_log_warning (hashcat_ctx, "  \"AMD Adrenalin Edition\" (23.7.2 or later) and \"AMD HIP SDK\" (23.Q3 or later)");
     #endif
 
     event_log_warning (hashcat_ctx, "* Intel CPUs require this runtime:");
@@ -6263,35 +6238,6 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
       if (device_param->device_processors == 1) device_param->skipped = true;
 
-      // Since we can't match OpenCL with Metal devices (missing PCI ID etc.) and at the same time we have better OpenCL support than Metal support,
-      // we disable all Metal devices by default. The user can reactivate them with -d.
-
-      if (device_param->skipped == false)
-      {
-        if (backend_ctx->backend_devices_filter == -1ULL)
-        {
-          if ((user_options->quiet == false) && (user_options->backend_info == 0))
-          {
-            event_log_warning (hashcat_ctx, "The device #%d has been disabled as it most likely also exists as an OpenCL device, but it is not possible to automatically map it.", device_id + 1);
-            event_log_warning (hashcat_ctx, "You can use -d %d to use Metal API instead of OpenCL API. In some rare cases this is more stable.", device_id + 1);
-            event_log_warning (hashcat_ctx, NULL);
-          }
-
-          device_param->skipped = true;
-        }
-        else
-        {
-          if (backend_ctx->backend_devices_filter & (1ULL << device_id))
-          {
-            // ok
-          }
-          else
-          {
-            device_param->skipped = true;
-          }
-        }
-      }
-
       /**
        * activate device
        */
@@ -7313,6 +7259,22 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
                   event_log_warning (hashcat_ctx, "             Falling back to OpenCL runtime.");
 
                   event_log_warning (hashcat_ctx, NULL);
+
+                  if ((backend_ctx->rc_cuda_init == 0) && (backend_ctx->rc_nvrtc_init == -1))
+                  {
+                    #if defined (_WIN)
+                    event_log_warning (hashcat_ctx, "If you are using WSL2 you can use CUDA instead of OpenCL.");
+                    event_log_warning (hashcat_ctx, "Users must not install any NVIDIA GPU Linux driver within WSL 2");
+                    event_log_warning (hashcat_ctx, "For all details: https://docs.nvidia.com/cuda/wsl-user-guide/index.html");
+                    event_log_warning (hashcat_ctx, NULL);
+
+                    event_log_warning (hashcat_ctx, "TLDR; go to https://developer.nvidia.com/cuda-downloads and follow this path:");
+                    event_log_warning (hashcat_ctx, "  Linux -> Architecture -> Distribution -> Version -> deb (local)");
+                    event_log_warning (hashcat_ctx, "Follow the installation Instructions on the website.");
+                    event_log_warning (hashcat_ctx, NULL);
+
+                    #endif
+                  }
                 }
               }
             }
@@ -7612,6 +7574,57 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
   backend_ctx->backend_devices_cnt    = cuda_devices_cnt    + hip_devices_cnt    + metal_devices_cnt    + opencl_devices_cnt;
   backend_ctx->backend_devices_active = cuda_devices_active + hip_devices_active + metal_devices_active + opencl_devices_active;
+
+  #if defined (__APPLE__)
+  // disable Metal devices if at least one OpenCL device is enabled
+  if (backend_ctx->opencl_devices_active > 0)
+  {
+    if (backend_ctx->mtl)
+    {
+      for (int backend_devices_cnt = 0; backend_devices_cnt < backend_ctx->backend_devices_cnt; backend_devices_cnt++)
+      {
+        hc_device_param_t *device_param = &backend_ctx->devices_param[backend_devices_cnt];
+
+        if (device_param->is_metal == false) continue;
+
+        // Since we can't match OpenCL with Metal devices (missing PCI ID etc.) and at the same time we have better OpenCL support than Metal support,
+        // we disable all Metal devices by default. The user can reactivate them with -d.
+
+        if (device_param->skipped == false)
+        {
+          if (backend_ctx->backend_devices_filter == -1ULL)
+          {
+            if ((user_options->quiet == false) && (user_options->backend_info == 0))
+            {
+              event_log_warning (hashcat_ctx, "The device #%d has been disabled as it most likely also exists as an OpenCL device, but it is not possible to automatically map it.", device_param->device_id + 1);
+              event_log_warning (hashcat_ctx, "You can use -d %d to use Metal API instead of OpenCL API. In some rare cases this is more stable.", device_param->device_id + 1);
+              event_log_warning (hashcat_ctx, NULL);
+            }
+
+            device_param->skipped = true;
+          }
+          else
+          {
+            if (backend_ctx->backend_devices_filter & (1ULL << device_param->device_id))
+            {
+              // ok
+            }
+            else
+            {
+              device_param->skipped = true;
+            }
+          }
+
+          if (device_param->skipped == true)
+          {
+            backend_ctx->metal_devices_active--;
+            backend_ctx->backend_devices_active--;
+          }
+        }
+      }
+    }
+  }
+  #endif
 
   // find duplicate devices
 
@@ -8016,7 +8029,7 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
         device_param->device_available_mem = device_param->device_global_mem - MAX_ALLOC_CHECKS_SIZE;
 
-        if (device_param->opencl_device_type & CL_DEVICE_TYPE_GPU)
+        if ((device_param->opencl_device_type & CL_DEVICE_TYPE_GPU) && ((device_param->opencl_platform_vendor_id != VENDOR_ID_INTEL_SDK) || (device_param->device_host_unified_memory == 0)))
         {
           // OK, so the problem here is the following:
           // There's just CL_DEVICE_GLOBAL_MEM_SIZE to ask OpenCL about the total memory on the device,
@@ -9796,8 +9809,10 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
 
     device_param->size_results = size_results;
 
-    u64 size_rules   = (u64) straight_ctx->kernel_rules_cnt * sizeof (kernel_rule_t);
-    u64 size_rules_c = (u64) KERNEL_RULES                   * sizeof (kernel_rule_t);
+    u32 aligned_rules_cnt = MAX (MAX (straight_ctx->kernel_rules_cnt, device_param->kernel_loops_min), KERNEL_RULES);
+
+    u64 size_rules   = (u64) aligned_rules_cnt * sizeof (kernel_rule_t);
+    u64 size_rules_c = (u64) KERNEL_RULES      * sizeof (kernel_rule_t);
 
     device_param->size_rules    = size_rules;
     device_param->size_rules_c  = size_rules_c;
@@ -9891,6 +9906,13 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
 
         kern_type = (u32) module_ctx->module_kern_type_dynamic (hashconfig, digests_buf, salts_buf, esalts_buf, hook_salts_buf, hash_info_ptr);
       }
+    }
+
+    if ((int) kern_type == -1)
+    {
+      event_log_error (hashcat_ctx, "Invalid hash-mode selected: -1");
+
+      return -1;
     }
 
     // built options
@@ -15080,7 +15102,7 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
 
       // size_pws_idx
 
-      size_pws_idx = (u64) (kernel_power_max + 1) * sizeof (pw_idx_t);
+      size_pws_idx = (kernel_power_max + 1) * sizeof (pw_idx_t);
 
       // size_tmps
 
@@ -16459,7 +16481,7 @@ int backend_session_update_mp_rl (hashcat_ctx_t *hashcat_ctx, const u32 css_cnt_
   return 0;
 }
 
-void *hook12_thread (void *p)
+HC_API_CALL void *hook12_thread (void *p)
 {
   hook_thread_param_t *hook_thread_param = (hook_thread_param_t *) p;
 
@@ -16483,7 +16505,7 @@ void *hook12_thread (void *p)
   return NULL;
 }
 
-void *hook23_thread (void *p)
+HC_API_CALL void *hook23_thread (void *p)
 {
   hook_thread_param_t *hook_thread_param = (hook_thread_param_t *) p;
 
